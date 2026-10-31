@@ -1,0 +1,110 @@
+# PerformanceOS
+
+> AI diet coach and photo food logging app designed for Indian meals, strength training, focus tracking, and daily budgeting.
+
+## Overview
+PerformanceOS allows users to snap a photo of any meal (with deep support for Indian foods such as rotis, katoris, biryani, thalis), decomposes items with estimated portion sizes, and provides adaptive calorie targets calculated from 30-day weight trend analysis.
+
+## Brand Baselines
+- Daily estimated burn: 2,550 kcal
+- Daily target: 2,000 kcal
+- Calorie deficit: 550 kcal / day
+- Rate of progress: -0.5 kg / week fat loss
+- Protein target: 180 g / day
+
+## Standard Indian Portions (IFCT 2017 Baselines)
+- Standard katori: 150 ml (or 150 g)
+- Medium phulka: 35 g each (2 phulkas = 70 g)
+- Standard thali: 26 cm
+- Tablespoon: 15 ml
+- Teaspoon cooking oil: 5 g (45 kcal)
+
+## Verified Indian Foods Database (Calculated from IFCT 2017)
+All cooked values are calculated from raw ingredient composition tables:
+
+### Paneer Bhurji (/calories/paneer-bhurji)
+- Category: curry
+- Standard portion: 1 standard katori (150 g) -> 240 kcal, 18.5g protein, 6.5g carbs, 15g fat
+- Base (100g): 160 kcal, 12g protein, 4.5g carbs, 10g fat
+- Cooked recipe yield: ~180g
+- Lighter tip: Use low-fat paneer (skim milk chhena) and reduce oil to 1 teaspoon (5 g) per 2 servings to save up to 100 kcal.
+
+### Chicken Dum Biryani (/calories/chicken-biryani)
+- Category: rice
+- Standard portion: 1 generous home plate (320 g) -> 480 kcal, 32g protein, 62g carbs, 14g fat
+- Base (100g): 150 kcal, 10g protein, 19.5g carbs, 4.5g fat
+- Cooked recipe yield: ~320g
+- Lighter tip: Opt for chicken breast over dark meat cuts and accompany with fresh cucumber mint raita made with low-fat curd.
+
+### Dal Tadka (/calories/dal-tadka)
+- Category: curry
+- Standard portion: 1 standard katori (150 g) -> 140 kcal, 7g protein, 19.5g carbs, 4g fat
+- Base (100g): 95 kcal, 4.5g protein, 13g carbs, 2.5g fat
+- Cooked recipe yield: ~300g
+- Lighter tip: Measure tempering ghee with a teaspoon (5 g = 45 kcal) rather than pouring directly from the jar.
+
+### Masala Dosa (/calories/masala-dosa)
+- Category: breakfast
+- Standard portion: 1 standard restaurant dosa (180 g) -> 330 kcal, 8g protein, 55g carbs, 8.5g fat
+- Base (100g): 185 kcal, 4.5g protein, 30.5g carbs, 4.5g fat
+- Cooked recipe yield: ~180g
+- Lighter tip: Order plain roast or request minimal oil on the tawa; dip chutney sparingly rather than pouring it over the plate.
+
+### Kanda Poha (/calories/poha)
+- Category: breakfast
+- Standard portion: 1 standard breakfast bowl (150 g) -> 285 kcal, 6g protein, 43g carbs, 10.5g fat
+- Base (100g): 190 kcal, 4g protein, 28.5g carbs, 7g fat
+- Cooked recipe yield: ~150g
+- Lighter tip: Toast peanuts dry in a separate pan to lower cooking oil requirement without losing characteristic crunch.
+
+### Phulka Roti (/calories/roti)
+- Category: staple
+- Standard portion: 2 medium phulkas (70 g) -> 180 kcal, 6g protein, 34g carbs, 1g fat
+- Base (100g): 255 kcal, 8.5g protein, 48.5g carbs, 1.5g fat
+- Cooked recipe yield: ~70g
+- Lighter tip: Skip brushing ghee on the cooked phulka to save ~40-45 kcal per bread while keeping standard whole-wheat fiber.
+
+### Steamed Idli (/calories/idli)
+- Category: breakfast
+- Standard portion: 2 idlis serving (90 g) -> 180 kcal, 5.5g protein, 38.5g carbs, 0.5g fat
+- Base (100g): 200 kcal, 6g protein, 43g carbs, 0.5g fat
+- Cooked recipe yield: ~90g
+- Lighter tip: Pair with light vegetable sambar rather than rich coconut chutney to keep total meal fat low.
+
+### Boiled Eggs (/calories/boiled-eggs)
+- Category: protein
+- Standard portion: 2 boiled eggs (100 g) -> 150 kcal, 13g protein, 1g carbs, 10g fat
+- Base (100g): 150 kcal, 13g protein, 1g carbs, 10g fat
+- Cooked recipe yield: ~100g
+- Lighter tip: Discard one yolk out of two to drop ~55 kcal and ~4.5 g fat while retaining pure egg-white albumen protein.
+
+### Oats with Banana & Milk (/calories/oats-banana)
+- Category: breakfast
+- Standard portion: 1 large morning bowl (350 g) -> 380 kcal, 15.5g protein, 61.5g carbs, 9g fat
+- Base (100g): 110 kcal, 4.5g protein, 17.5g carbs, 2.5g fat
+- Cooked recipe yield: ~250g
+- Lighter tip: Cook oats primarily in water with a splash of milk and rely on cinnamon powder for natural aroma without table sugar.
+
+### Curd Rice (/calories/curd-rice)
+- Category: rice
+- Standard portion: 1 full dinner bowl (250 g) -> 350 kcal, 9g protein, 58.5g carbs, 8.5g fat
+- Base (100g): 140 kcal, 3.5g protein, 23.5g carbs, 3.5g fat
+- Cooked recipe yield: ~150g
+- Lighter tip: Use homemade toned dahi and add diced cucumber to increase volume with negligible additional calories.
+
+## Key Features
+- Photo Food Logging: Computer vision detects meal components, portions, and hidden cooking oils.
+- Adaptive Daily Targets: Exponentially weighted moving average (EWMA) trend weight computes true daily expenditure, adjusting weekly.
+- Personal AI Coach: In-depth context from the user's past 14 days of nutrition, sleep, focus, and strength training.
+- Daily Operating System: Combines Strength Log (sets, reps, progressive overload), Focus Timer (deep work tracking), Daily Budget (remaining allowance), and Daily Big Three Priorities.
+- Private & Offline First: Works seamlessly offline; zero ads, no third-party tracking, full data export available.
+
+## Core Reference Links
+- Home: https://osperformance.vercel.app/
+- The Science: https://osperformance.vercel.app/science
+- Frequently Asked Questions: https://osperformance.vercel.app/faq
+- Guides & Educational Hub: https://osperformance.vercel.app/guides
+- Calories Directory: https://osperformance.vercel.app/calories/roti
+- Free Calculators: https://osperformance.vercel.app/tools/tdee-calculator
+- Privacy: https://osperformance.vercel.app/#privacy
+- About & Designer: https://osperformance.vercel.app/about

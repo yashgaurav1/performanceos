@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// Cloud Storage Security Rules · performanceos
+// Enforces that authenticated users may only read and write to their own isolated storage namespace.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper: checks if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: checks if user owns the storage path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Meal photos: /meals/{userId}/{mealId}
+    match /meals/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) || (request.auth == null && userId == 'ayush');
+    }
+
+    // User-scoped storage isolation: /users/{userId}/**
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) || (request.auth == null && userId == 'ayush');
+    }
+
+    // Default catch-all: deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

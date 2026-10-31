@@ -1,0 +1,1045 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Application: performance-os-2230e (Performance OS Command Center)
+    //
+    // Root Collection: /users/{userId}
+    // Document ID: Firebase Auth UID (userId)
+    // Description: Athlete profile, physiological targets, and app settings
+    // Fields:
+    //   - id / uid: string (optional, 1-100 chars, matches userId, immutable)
+    //   - name / display_name / displayName: string (optional, 1-100 chars) - Display name
+    //   - email: string (optional, valid email, <= 100 chars, immutable) - User email
+    //   - photoURL / photo_url: string (optional, 1-500 chars) - Avatar URL
+    //   - goalType / goal_type: string (optional, enum: CUT, MAINTAIN, BULK) - Fitness goal
+    //   - body_weight_kg / bodyWeightKg: number (optional, 20.0-300.0) - Current weight in kg
+    //   - targetWeeklyRateKg / target_weekly_rate_kg: number (optional, 0.0-2.5) - Target kg/week
+    //   - currentTdeeKcal / current_tdee_kcal: number (optional, 500-10000) - Rolling TDEE estimate
+    //   - targetCalories / target_kcal: number (optional, 500-10000) - Daily caloric target
+    //   - targetProteinG / target_protein_g: number (optional, 0-1000) - Daily protein target (g)
+    //   - targetCarbsG / target_carbs_g: number (optional, 0-2000) - Daily carbs target (g)
+    //   - targetFatG / target_fat_g: number (optional, 0-500) - Daily fats target (g)
+    //   - target_sleep_hours / targetSleepHours: number (optional, 0-24) - Sleep target hours
+    //   - target_study_hours / targetStudyHours: number (optional, 0-24) - Study target hours
+    //   - exam_crunch_mode / examCrunchMode: bool (optional) - High-intensity study mode
+    //   - pomodoro_focus_mins / pomodoroFocusMins: number (optional, 1-180) - Focus duration
+    //   - pomodoro_short_break_mins / pomodoroShortBreakMins: number (optional, 1-60)
+    //   - pomodoro_long_break_mins / pomodoroLongBreakMins: number (optional, 1-120)
+    //   - pomodoro_cycles_before_long / pomodoroCyclesBeforeLong: number (optional, 1-20)
+    //   - currency_code / currencyCode: string (optional, 1-10 chars) - Currency code
+    //   - monthly_budget_minor / monthlyBudgetMinor: number (optional, 0-1000000000)
+    //   - rest_days / restDays: list (optional, <= 7 items) - Rest day indices (0-6)
+    //   - sync_status / syncStatus: string (optional, <= 50 chars) - Client sync flag
+    //   - createdAt / created_at: timestamp or ISO string (optional, immutable)
+    //   - updatedAt / updated_at: timestamp or ISO string (optional)
+    //
+    // Subcollection 1: /users/{userId}/days/{date} (and /dailyLogs/{date})
+    // Document ID: Date string in YYYY-MM-DD format (must match date parameter)
+    // Description: Daily logs, day performance scores, sleep metrics, and biometrics
+    // Fields:
+    //   - date / log_date: string (optional, YYYY-MM-DD, matches docId, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - rawScaleWeightKg / scaleWeightKg / body_weight_kg: number (optional, 20.0-300.0)
+    //   - ewmaTrendWeightKg / trendWeightKg: number (optional, 20.0-300.0)
+    //   - totalCaloriesIn / caloriesIn: number (optional, 0-20000)
+    //   - totalProteinG / proteinG: number (optional, 0-1000)
+    //   - totalCarbsG / carbsG: number (optional, 0-2000)
+    //   - totalFatG / fatG: number (optional, 0-500)
+    //   - calculatedRollingTdeeKcal / calculatedExpenditureKcal: number (optional, 500-10000)
+    //   - adherenceScore / day_score / dayScore: number (optional, 0-100)
+    //   - sleep_hours / sleepHours: number (optional, 0-24)
+    //   - sleep_quality / sleepQuality: number (optional, 1-5)
+    //   - subjectiveMood / mood_score / moodScore: number (optional, 1-5)
+    //   - energyLevel / energy_score / energyScore: number (optional, 1-5)
+    //   - study_hours / studyHours: number (optional, 0-24)
+    //   - active_recall_mins / activeRecallMins: number (optional, 0-1440)
+    //   - friction_note / frictionNote: string (optional, 0-2000 chars)
+    //   - wins_list / winsList: list (optional, <= 50 items)
+    //   - score_breakdown / scoreBreakdown: map (optional)
+    //   - sync_status / syncStatus: string (optional, <= 50 chars)
+    //   - client_updated_at / createdAt / created_at / updatedAt / updated_at: timestamp or ISO
+    //
+    // Subcollection 2: /users/{userId}/meals/{mealId} (and /foodEntries/{mealId})
+    // Document ID: Meal entry ID (1-100 chars)
+    // Description: Food entries, nutritional macros, calories, barcodes, and items breakdown
+    // Fields:
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - foodName / mealTitle / meal_title / food_name: string (required, 1-200 chars)
+    //   - brandName / brand: string (optional, 0-100 chars)
+    //   - barcode: string (optional, 0-100 chars)
+    //   - servingWeightG / servingGrams: number (optional, 0.1-5000)
+    //   - caloriesKcal / calories / kcal_point / kcalPoint: number (optional, 0-10000)
+    //   - kcal_low / kcalLow / kcal_high / kcalHigh: number (optional, 0-10000)
+    //   - proteinG / protein / protein_g: number (optional, 0-1000)
+    //   - carbsG / carbs / carbs_g: number (optional, 0-2000)
+    //   - fatG / fat / fat_g: number (optional, 0-500)
+    //   - fiberG / fiber / fiber_g: number (optional, 0-200)
+    //   - mealSlot / meal_slot: string (optional, <= 50 chars)
+    //   - date / logDate / log_date: string (optional, YYYY-MM-DD)
+    //   - dailyTelemetryId / dailyLogId: string (optional, 1-100 chars)
+    //   - sourceType / source_type: string (optional, <= 50 chars)
+    //   - photoPath / photo_path: string (optional, <= 500 chars)
+    //   - prepModifier / prep_modifier: string (optional, <= 50 chars)
+    //   - confidenceTier / confidence_tier: string (optional, <= 30 chars)
+    //   - itemsBreakdown / items_breakdown: list (optional, <= 50 items)
+    //   - sync_status: string (optional, <= 50 chars)
+    //   - loggedAt / logged_at / createdAt / created_at / updatedAt / updated_at: timestamp or ISO
+    //
+    // Subcollection 3: /users/{userId}/workouts/{workoutId}
+    // Document ID: Workout ID (1-100 chars)
+    // Description: Gym workout sessions, splits, sets, exercises, volume, and PR records
+    // Fields:
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - date / log_date: string (optional, YYYY-MM-DD)
+    //   - split_name / splitName: string (optional, 1-100 chars)
+    //   - started_at / startedAt: timestamp or ISO string (optional)
+    //   - ended_at / endedAt: timestamp or ISO string (optional)
+    //   - session_rpe / sessionRpe: number (optional, 1-10)
+    //   - notes / note: string (optional, 0-2000 chars)
+    //   - total_volume_kg / totalVolumeKg: number (optional, 0-1000000)
+    //   - pr_count / prCount: number (optional, 0-1000)
+    //   - sets / workout_sets: list (optional, <= 100 items)
+    //   - exercises: list (optional, <= 50 items)
+    //   - client_updated_at / sync_status / createdAt / created_at / updatedAt / updated_at
+    //
+    // Subcollection 4: /users/{userId}/focus/{sessionId} (and /studySessions/{sessionId})
+    // Document ID: Session ID (1-100 chars)
+    // Description: Study sessions, focus minutes, pomodoros, and distractions
+    // Fields:
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - subject: string (required, 1-150 chars)
+    //   - durationMinutes / focus_mins / focusMins: number (optional, 1-1440)
+    //   - mode: string (optional, 1-50 chars)
+    //   - source: string (optional, enum: pomodoro, stopwatch, manual)
+    //   - pomodoros / interruptions: number (optional, 0-100)
+    //   - focus_rating / focusRating: number (optional, 1-5)
+    //   - note / notes: string (optional, 0-2000 chars)
+    //   - date / logDate / log_date: string (optional, YYYY-MM-DD)
+    //   - started_at / ended_at / logged_at / client_updated_at / createdAt / updatedAt
+    //
+    // Subcollection 5: /users/{userId}/txns/{txnId} (and /transactions/{txnId})
+    // Document ID: Transaction ID (1-100 chars)
+    // Description: Money transactions, ledger expenses, categories, and payment methods
+    // Fields:
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - amount / amount_minor / amountMinor: number (required, > 0)
+    //   - category: string (required, 1-50 chars)
+    //   - date / spent_on / spentOn: string (required, YYYY-MM-DD)
+    //   - payment_method / paymentMethod: string (optional, 1-50 chars)
+    //   - vendorOrWhere / merchant: string (optional, 0-150 chars)
+    //   - note: string (optional, 0-1000 chars)
+    //   - currency_code / currencyCode: string (optional, 1-10 chars)
+    //   - is_recurring / isRecurring: bool (optional)
+    //   - client_updated_at / sync_status / createdAt / created_at / updatedAt / updated_at
+    //
+    // Subcollection 6: /users/{userId}/coach/{checkInId} (and /coachCheckIns/{checkInId})
+    // Document ID: Check-in ID (1-100 chars)
+    // Description: Weekly coach check-ins, metabolic adjustments, and recommendations
+    // Fields:
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - checkInDate / check_in_date / date: string (required, YYYY-MM-DD)
+    //   - weekStartDate / week_start_date: string (optional, YYYY-MM-DD)
+    //   - previousTdeeKcal / previous_tdee_kcal: number (optional, 500-10000)
+    //   - newTdeeKcal / new_tdee_kcal: number (optional, 500-10000)
+    //   - tdeeDeltaKcal / tdee_delta_kcal: number (optional, -2000 to 2000)
+    //   - previousTargetKcal / previous_target_kcal: number (optional, 500-10000)
+    //   - newTargetKcal / new_target_kcal: number (optional, 500-10000)
+    //   - newProteinG / new_protein_g: number (optional, 0-1000)
+    //   - newCarbsG / new_carbs_g: number (optional, 0-2000)
+    //   - newFatG / new_fat_g: number (optional, 0-500)
+    //   - acceptedByUser / accepted_by_user: bool (optional)
+    //   - notes / recommendations: string (optional, 0-5000 chars)
+    //   - metabolicState / metabolic_state: string (optional, 0-100 chars)
+    //   - client_updated_at / sync_status / createdAt / created_at / updatedAt / updated_at
+    //
+    // Subcollection 7: /users/{userId}/reviews/{reviewId} (and /aiWeeklyReviews/{reviewId})
+    // Document ID: Review ID (1-100 chars)
+    // Description: Weekly performance reviews, overall grades, telemetry snapshots
+    // Fields:
+    //   - id: string (optional, 1-100 chars, immutable)
+    //   - userId / user_id: string (optional, matches auth.uid, immutable)
+    //   - week_start_date / weekStartDate: string (required, YYYY-MM-DD)
+    //   - end_date / endDate: string (optional, YYYY-MM-DD)
+    //   - overall_grade / overallGrade: string (optional, 1-10 chars)
+    //   - headline_verdict / headlineVerdict: string (optional, 0-500 chars)
+    //   - scorecard_summary / scorecardSummary: map (optional)
+    //   - cross_domain_correlations / crossDomainCorrelations: list (optional, <= 20 items)
+    //   - training_and_stalled_lifts_audit / trainingAudit: list (optional, <= 50 items)
+    //   - next_week_protocol / nextWeekProtocol: list (optional, <= 20 items)
+    //   - telemetry_snapshot / telemetrySnapshot: map (optional)
+    //   - review_payload / reviewPayload: map (optional)
+    //   - client_updated_at / sync_status / createdAt / created_at / updatedAt / updated_at
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Safe Helper Functions
+    // ===============================================================
+
+    // Check if the request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user is the resource owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Validate that required fields are present in the document
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the document contains strictly allowed fields (no schema pollution)
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Ensure immutable fields cannot be modified during updates
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate standard email format
+    function isValidEmail(email) {
+      return email is string &&
+             email.size() >= 3 &&
+             email.size() <= 100 &&
+             email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Validate calendar date format (YYYY-MM-DD)
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+             dateStr.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
+    }
+
+    // Validate optional string with bounded length limits
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate optional number with bounded numeric limits
+    function isValidOptionalNumber(field, minVal, maxVal) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             (request.resource.data[field] is number &&
+              request.resource.data[field] >= minVal &&
+              request.resource.data[field] <= maxVal);
+    }
+
+    // Validate optional boolean value
+    function isValidOptionalBool(field) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             request.resource.data[field] is bool;
+    }
+
+    // Validate optional list with bounded size limits
+    function isValidOptionalList(field, maxSize) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             (request.resource.data[field] is list &&
+              request.resource.data[field].size() <= maxSize);
+    }
+
+    // Validate optional map value
+    function isValidOptionalMap(field) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             request.resource.data[field] is map;
+    }
+
+    // Validate optional timestamp or ISO date string
+    function isValidOptionalDateTime(field) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             request.resource.data[field] is timestamp ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= 10 &&
+              request.resource.data[field].size() <= 40);
+    }
+
+    // ===============================================================
+    // Domain Validator Functions (Validator Pattern)
+    // ===============================================================
+
+    // Validator for /users/{userId} profile document
+    function isValidUserProfile(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'uid', 'name', 'display_name', 'displayName', 'email',
+               'photoURL', 'photo_url', 'goalType', 'goal_type',
+               'body_weight_kg', 'bodyWeightKg', 'targetWeeklyRateKg', 'target_weekly_rate_kg',
+               'currentTdeeKcal', 'current_tdee_kcal', 'targetCalories', 'target_kcal',
+               'targetProteinG', 'target_protein_g', 'targetCarbsG', 'target_carbs_g',
+               'targetFatG', 'target_fat_g', 'target_sleep_hours', 'targetSleepHours',
+               'target_study_hours', 'targetStudyHours', 'exam_crunch_mode', 'examCrunchMode',
+               'pomodoro_focus_mins', 'pomodoroFocusMins', 'pomodoro_short_break_mins', 'pomodoroShortBreakMins',
+               'pomodoro_long_break_mins', 'pomodoroLongBreakMins', 'pomodoro_cycles_before_long', 'pomodoroCyclesBeforeLong',
+               'currency_code', 'currencyCode', 'monthly_budget_minor', 'monthlyBudgetMinor',
+               'rest_days', 'restDays', 'sync_status', 'syncStatus',
+               'createdAt', 'created_at', 'updatedAt', 'updated_at'
+             ]) &&
+             (!('id' in data) || data.id == userId) &&
+             (!('uid' in data) || data.uid == userId) &&
+             isValidOptionalString('name', 1, 100) &&
+             isValidOptionalString('display_name', 1, 100) &&
+             isValidOptionalString('displayName', 1, 100) &&
+             (!('email' in data) || isValidEmail(data.email)) &&
+             isValidOptionalString('photoURL', 1, 500) &&
+             isValidOptionalString('photo_url', 1, 500) &&
+             (!('goalType' in data) || data.goalType in ['CUT', 'MAINTAIN', 'BULK', 'cut', 'maintain', 'bulk']) &&
+             (!('goal_type' in data) || data.goal_type in ['CUT', 'MAINTAIN', 'BULK', 'cut', 'maintain', 'bulk']) &&
+             isValidOptionalNumber('body_weight_kg', 20.0, 300.0) &&
+             isValidOptionalNumber('bodyWeightKg', 20.0, 300.0) &&
+             isValidOptionalNumber('targetWeeklyRateKg', 0.0, 2.5) &&
+             isValidOptionalNumber('target_weekly_rate_kg', 0.0, 2.5) &&
+             isValidOptionalNumber('currentTdeeKcal', 500, 10000) &&
+             isValidOptionalNumber('current_tdee_kcal', 500, 10000) &&
+             isValidOptionalNumber('targetCalories', 500, 10000) &&
+             isValidOptionalNumber('target_kcal', 500, 10000) &&
+             isValidOptionalNumber('targetProteinG', 0, 1000) &&
+             isValidOptionalNumber('target_protein_g', 0, 1000) &&
+             isValidOptionalNumber('targetCarbsG', 0, 2000) &&
+             isValidOptionalNumber('target_carbs_g', 0, 2000) &&
+             isValidOptionalNumber('targetFatG', 0, 500) &&
+             isValidOptionalNumber('target_fat_g', 0, 500) &&
+             isValidOptionalNumber('target_sleep_hours', 0, 24) &&
+             isValidOptionalNumber('targetSleepHours', 0, 24) &&
+             isValidOptionalNumber('target_study_hours', 0, 24) &&
+             isValidOptionalNumber('targetStudyHours', 0, 24) &&
+             isValidOptionalBool('exam_crunch_mode') &&
+             isValidOptionalBool('examCrunchMode') &&
+             isValidOptionalNumber('pomodoro_focus_mins', 1, 180) &&
+             isValidOptionalNumber('pomodoroFocusMins', 1, 180) &&
+             isValidOptionalNumber('pomodoro_short_break_mins', 1, 60) &&
+             isValidOptionalNumber('pomodoroShortBreakMins', 1, 60) &&
+             isValidOptionalNumber('pomodoro_long_break_mins', 1, 120) &&
+             isValidOptionalNumber('pomodoroLongBreakMins', 1, 120) &&
+             isValidOptionalNumber('pomodoro_cycles_before_long', 1, 20) &&
+             isValidOptionalNumber('pomodoroCyclesBeforeLong', 1, 20) &&
+             isValidOptionalString('currency_code', 1, 10) &&
+             isValidOptionalString('currencyCode', 1, 10) &&
+             isValidOptionalNumber('monthly_budget_minor', 0, 1000000000) &&
+             isValidOptionalNumber('monthlyBudgetMinor', 0, 1000000000) &&
+             isValidOptionalList('rest_days', 7) &&
+             isValidOptionalList('restDays', 7) &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalString('syncStatus', 1, 50) &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Subcollection 1: /users/{userId}/days/{date}
+    function isValidDayLog(data, date, userId) {
+      return hasOnlyAllowedFields([
+               'date', 'log_date', 'userId', 'user_id', 'id',
+               'rawScaleWeightKg', 'scaleWeightKg', 'body_weight_kg',
+               'ewmaTrendWeightKg', 'trendWeightKg',
+               'totalCaloriesIn', 'caloriesIn',
+               'totalProteinG', 'proteinG',
+               'totalCarbsG', 'carbsG',
+               'totalFatG', 'fatG',
+               'calculatedRollingTdeeKcal', 'calculatedExpenditureKcal',
+               'adherenceScore', 'day_score', 'dayScore',
+               'sleep_hours', 'sleepHours', 'sleep_quality', 'sleepQuality',
+               'subjectiveMood', 'mood_score', 'moodScore',
+               'energyLevel', 'energy_score', 'energyScore',
+               'study_hours', 'studyHours', 'active_recall_mins', 'activeRecallMins',
+               'friction_note', 'frictionNote',
+               'wins_list', 'winsList',
+               'score_breakdown', 'scoreBreakdown',
+               'sync_status', 'syncStatus',
+               'client_updated_at', 'createdAt', 'created_at', 'updatedAt', 'updated_at'
+             ]) &&
+             isValidDateString(date) &&
+             (!('date' in data) || data.date == date) &&
+             (!('log_date' in data) || data.log_date == date) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             isValidOptionalString('id', 1, 100) &&
+             isValidOptionalNumber('rawScaleWeightKg', 20.0, 300.0) &&
+             isValidOptionalNumber('scaleWeightKg', 20.0, 300.0) &&
+             isValidOptionalNumber('body_weight_kg', 20.0, 300.0) &&
+             isValidOptionalNumber('ewmaTrendWeightKg', 20.0, 300.0) &&
+             isValidOptionalNumber('trendWeightKg', 20.0, 300.0) &&
+             isValidOptionalNumber('totalCaloriesIn', 0, 20000) &&
+             isValidOptionalNumber('caloriesIn', 0, 20000) &&
+             isValidOptionalNumber('totalProteinG', 0, 1000) &&
+             isValidOptionalNumber('proteinG', 0, 1000) &&
+             isValidOptionalNumber('totalCarbsG', 0, 2000) &&
+             isValidOptionalNumber('carbsG', 0, 2000) &&
+             isValidOptionalNumber('totalFatG', 0, 500) &&
+             isValidOptionalNumber('fatG', 0, 500) &&
+             isValidOptionalNumber('calculatedRollingTdeeKcal', 500, 10000) &&
+             isValidOptionalNumber('calculatedExpenditureKcal', 500, 10000) &&
+             isValidOptionalNumber('adherenceScore', 0, 100) &&
+             isValidOptionalNumber('day_score', 0, 100) &&
+             isValidOptionalNumber('dayScore', 0, 100) &&
+             isValidOptionalNumber('sleep_hours', 0, 24) &&
+             isValidOptionalNumber('sleepHours', 0, 24) &&
+             isValidOptionalNumber('sleep_quality', 1, 5) &&
+             isValidOptionalNumber('sleepQuality', 1, 5) &&
+             isValidOptionalNumber('subjectiveMood', 1, 5) &&
+             isValidOptionalNumber('mood_score', 1, 5) &&
+             isValidOptionalNumber('moodScore', 1, 5) &&
+             isValidOptionalNumber('energyLevel', 1, 5) &&
+             isValidOptionalNumber('energy_score', 1, 5) &&
+             isValidOptionalNumber('energyScore', 1, 5) &&
+             isValidOptionalNumber('study_hours', 0, 24) &&
+             isValidOptionalNumber('studyHours', 0, 24) &&
+             isValidOptionalNumber('active_recall_mins', 0, 1440) &&
+             isValidOptionalNumber('activeRecallMins', 0, 1440) &&
+             isValidOptionalString('friction_note', 0, 2000) &&
+             isValidOptionalString('frictionNote', 0, 2000) &&
+             isValidOptionalList('wins_list', 50) &&
+             isValidOptionalList('winsList', 50) &&
+             isValidOptionalMap('score_breakdown') &&
+             isValidOptionalMap('scoreBreakdown') &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalString('syncStatus', 1, 50) &&
+             isValidOptionalDateTime('client_updated_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Subcollection 2: /users/{userId}/meals/{mealId}
+    function isValidMealEntry(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'user_id',
+               'foodName', 'mealTitle', 'meal_title', 'food_name',
+               'brandName', 'brand', 'barcode',
+               'servingWeightG', 'servingGrams',
+               'caloriesKcal', 'calories', 'kcal_point', 'kcalPoint',
+               'kcal_low', 'kcalLow', 'kcal_high', 'kcalHigh',
+               'proteinG', 'protein', 'protein_g',
+               'carbsG', 'carbs', 'carbs_g',
+               'fatG', 'fat', 'fat_g',
+               'fiberG', 'fiber', 'fiber_g',
+               'mealSlot', 'meal_slot',
+               'date', 'logDate', 'log_date',
+               'dailyTelemetryId', 'dailyLogId',
+               'sourceType', 'source_type',
+               'photoPath', 'photo_path',
+               'prepModifier', 'prep_modifier',
+               'confidenceTier', 'confidence_tier',
+               'itemsBreakdown', 'items_breakdown',
+               'sync_status',
+               'loggedAt', 'logged_at',
+               'createdAt', 'created_at',
+               'updatedAt', 'updated_at'
+             ]) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             (('foodName' in data && data.foodName is string && data.foodName.size() > 0 && data.foodName.size() <= 200) ||
+              ('mealTitle' in data && data.mealTitle is string && data.mealTitle.size() > 0 && data.mealTitle.size() <= 200) ||
+              ('meal_title' in data && data.meal_title is string && data.meal_title.size() > 0 && data.meal_title.size() <= 200) ||
+              ('food_name' in data && data.food_name is string && data.food_name.size() > 0 && data.food_name.size() <= 200)) &&
+             isValidOptionalString('id', 1, 100) &&
+             isValidOptionalString('brandName', 0, 100) &&
+             isValidOptionalString('brand', 0, 100) &&
+             isValidOptionalString('barcode', 0, 100) &&
+             isValidOptionalNumber('servingWeightG', 0.1, 5000) &&
+             isValidOptionalNumber('servingGrams', 0.1, 5000) &&
+             isValidOptionalNumber('caloriesKcal', 0, 10000) &&
+             isValidOptionalNumber('calories', 0, 10000) &&
+             isValidOptionalNumber('kcal_point', 0, 10000) &&
+             isValidOptionalNumber('kcalPoint', 0, 10000) &&
+             isValidOptionalNumber('kcal_low', 0, 10000) &&
+             isValidOptionalNumber('kcalLow', 0, 10000) &&
+             isValidOptionalNumber('kcal_high', 0, 10000) &&
+             isValidOptionalNumber('kcalHigh', 0, 10000) &&
+             isValidOptionalNumber('proteinG', 0, 1000) &&
+             isValidOptionalNumber('protein', 0, 1000) &&
+             isValidOptionalNumber('protein_g', 0, 1000) &&
+             isValidOptionalNumber('carbsG', 0, 2000) &&
+             isValidOptionalNumber('carbs', 0, 2000) &&
+             isValidOptionalNumber('carbs_g', 0, 2000) &&
+             isValidOptionalNumber('fatG', 0, 500) &&
+             isValidOptionalNumber('fat', 0, 500) &&
+             isValidOptionalNumber('fat_g', 0, 500) &&
+             isValidOptionalNumber('fiberG', 0, 200) &&
+             isValidOptionalNumber('fiber', 0, 200) &&
+             isValidOptionalNumber('fiber_g', 0, 200) &&
+             isValidOptionalString('mealSlot', 0, 50) &&
+             isValidOptionalString('meal_slot', 0, 50) &&
+             (!('date' in data) || isValidDateString(data.date)) &&
+             (!('logDate' in data) || isValidDateString(data.logDate)) &&
+             (!('log_date' in data) || isValidDateString(data.log_date))` +
+` &&
+             isValidOptionalString('dailyTelemetryId', 1, 100) &&
+             isValidOptionalString('dailyLogId', 1, 100) &&
+             isValidOptionalString('sourceType', 1, 50) &&
+             isValidOptionalString('source_type', 1, 50) &&
+             isValidOptionalString('photoPath', 1, 500) &&
+             isValidOptionalString('photo_path', 1, 500) &&
+             isValidOptionalString('prepModifier', 1, 50) &&
+             isValidOptionalString('prep_modifier', 1, 50) &&
+             isValidOptionalString('confidenceTier', 1, 30) &&
+             isValidOptionalString('confidence_tier', 1, 30) &&
+             isValidOptionalList('itemsBreakdown', 50) &&
+             isValidOptionalList('items_breakdown', 50) &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalDateTime('loggedAt') &&
+             isValidOptionalDateTime('logged_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Subcollection 3: /users/{userId}/workouts/{workoutId}
+    function isValidWorkoutSession(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'user_id',
+               'date', 'log_date',
+               'split_name', 'splitName',
+               'started_at', 'startedAt',
+               'ended_at', 'endedAt',
+               'session_rpe', 'sessionRpe',
+               'notes', 'note',
+               'total_volume_kg', 'totalVolumeKg',
+               'pr_count', 'prCount',
+               'sets', 'workout_sets', 'exercises',
+               'client_updated_at', 'sync_status',
+               'createdAt', 'created_at',
+               'updatedAt', 'updated_at'
+             ]) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             isValidOptionalString('id', 1, 100) &&
+             (!('date' in data) || isValidDateString(data.date)) &&
+             (!('log_date' in data) || isValidDateString(data.log_date)) &&
+             isValidOptionalString('split_name', 1, 100) &&
+             isValidOptionalString('splitName', 1, 100) &&
+             isValidOptionalNumber('session_rpe', 1, 10) &&
+             isValidOptionalNumber('sessionRpe', 1, 10) &&
+             isValidOptionalString('notes', 0, 2000) &&
+             isValidOptionalString('note', 0, 2000) &&
+             isValidOptionalNumber('total_volume_kg', 0, 1000000) &&
+             isValidOptionalNumber('totalVolumeKg', 0, 1000000) &&
+             isValidOptionalNumber('pr_count', 0, 1000) &&
+             isValidOptionalNumber('prCount', 0, 1000) &&
+             isValidOptionalList('sets', 100) &&
+             isValidOptionalList('workout_sets', 100) &&
+             isValidOptionalList('exercises', 50) &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalDateTime('started_at') &&
+             isValidOptionalDateTime('startedAt') &&
+             isValidOptionalDateTime('ended_at') &&
+             isValidOptionalDateTime('endedAt') &&
+             isValidOptionalDateTime('client_updated_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Workout Sets subcollection: /users/{userId}/workouts/{workoutId}/sets/{setId}
+    function isValidWorkoutSetItem(data, workoutId, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'workout_id', 'workoutId', 'user_id', 'userId',
+               'exercise_slug', 'exerciseSlug', 'set_number', 'setNumber',
+               'set_type', 'setType', 'weight_kg', 'weightKg', 'reps', 'rir',
+               'est_1rm', 'est1rm', 'is_1rm_pr', 'is1rmPr',
+               'is_volume_pr', 'isVolumePr', 'completed_at', 'completedAt',
+               'createdAt', 'updatedAt'
+             ]) &&
+             (!('workout_id' in data) || data.workout_id == workoutId) &&
+             (!('workoutId' in data) || data.workoutId == workoutId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             (!('userId' in data) || data.userId == userId) &&
+             isValidOptionalString('id', 1, 100) &&
+             isValidOptionalString('exercise_slug', 1, 100) &&
+             isValidOptionalString('exerciseSlug', 1, 100) &&
+             isValidOptionalNumber('set_number', 1, 100) &&
+             isValidOptionalNumber('setNumber', 1, 100) &&
+             isValidOptionalString('set_type', 1, 30) &&
+             isValidOptionalString('setType', 1, 30) &&
+             isValidOptionalNumber('weight_kg', 0, 1000) &&
+             isValidOptionalNumber('weightKg', 0, 1000) &&
+             isValidOptionalNumber('reps', 0, 500) &&
+             isValidOptionalNumber('rir', 0, 20) &&
+             isValidOptionalNumber('est_1rm', 0, 1000) &&
+             isValidOptionalNumber('est1rm', 0, 1000) &&
+             isValidOptionalBool('is_1rm_pr') &&
+             isValidOptionalBool('is1rmPr') &&
+             isValidOptionalBool('is_volume_pr') &&
+             isValidOptionalBool('isVolumePr') &&
+             isValidOptionalDateTime('completed_at') &&
+             isValidOptionalDateTime('completedAt') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('updatedAt');
+    }
+
+    // Validator for Subcollection 4: /users/{userId}/focus/{sessionId}
+    function isValidFocusSession(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'user_id',
+               'subject',
+               'durationMinutes', 'focus_mins', 'focusMins',
+               'mode', 'source',
+               'pomodoros', 'interruptions',
+               'focus_rating', 'focusRating',
+               'note', 'notes',
+               'date', 'logDate', 'log_date',
+               'started_at', 'startedAt',
+               'ended_at', 'endedAt',
+               'logged_at', 'loggedAt',
+               'client_updated_at', 'sync_status',
+               'createdAt', 'created_at',
+               'updatedAt', 'updated_at'
+             ]) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             hasRequiredFields(['subject']) &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() <= 150 &&
+             isValidOptionalString('id', 1, 100) &&
+             isValidOptionalNumber('durationMinutes', 1, 1440) &&
+             isValidOptionalNumber('focus_mins', 1, 1440) &&
+             isValidOptionalNumber('focusMins', 1, 1440) &&
+             isValidOptionalString('mode', 1, 50) &&
+             (!('source' in data) || data.source in ['pomodoro', 'stopwatch', 'manual']) &&
+             isValidOptionalNumber('pomodoros', 0, 100) &&
+             isValidOptionalNumber('interruptions', 0, 100) &&
+             isValidOptionalNumber('focus_rating', 1, 5) &&
+             isValidOptionalNumber('focusRating', 1, 5) &&
+             isValidOptionalString('note', 0, 2000) &&
+             isValidOptionalString('notes', 0, 2000) &&
+             (!('date' in data) || isValidDateString(data.date)) &&
+             (!('logDate' in data) || isValidDateString(data.logDate)) &&
+             (!('log_date' in data) || isValidDateString(data.log_date)) &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalDateTime('started_at') &&
+             isValidOptionalDateTime('startedAt') &&
+             isValidOptionalDateTime('ended_at') &&
+             isValidOptionalDateTime('endedAt') &&
+             isValidOptionalDateTime('logged_at') &&
+             isValidOptionalDateTime('loggedAt') &&
+             isValidOptionalDateTime('client_updated_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Subcollection 5: /users/{userId}/txns/{txnId}
+    function isValidTransaction(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'user_id',
+               'amount', 'amount_minor', 'amountMinor',
+               'category',
+               'payment_method', 'paymentMethod',
+               'vendorOrWhere', 'merchant',
+               'note',
+               'date', 'spent_on', 'spentOn',
+               'currency_code', 'currencyCode',
+               'is_recurring', 'isRecurring',
+               'client_updated_at', 'sync_status',
+               'createdAt', 'created_at',
+               'updatedAt', 'updated_at'
+             ]) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             hasRequiredFields(['category']) &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 50 &&
+             (('amount' in data && data.amount is number && data.amount > 0 && data.amount <= 10000000) ||
+              ('amount_minor' in data && data.amount_minor is number && data.amount_minor > 0 && data.amount_minor <= 1000000000) ||
+              ('amountMinor' in data && data.amountMinor is number && data.amountMinor > 0 && data.amountMinor <= 1000000000)) &&
+             (('date' in data && isValidDateString(data.date)) ||
+              ('spent_on' in data && isValidDateString(data.spent_on)) ||
+              ('spentOn' in data && isValidDateString(data.spentOn))) &&
+             isValidOptionalString('id', 1, 100) &&
+             isValidOptionalString('payment_method', 1, 50) &&
+             isValidOptionalString('paymentMethod', 1, 50) &&
+             isValidOptionalString('vendorOrWhere', 0, 150) &&
+             isValidOptionalString('merchant', 0, 150) &&
+             isValidOptionalString('note', 0, 1000) &&
+             isValidOptionalString('currency_code', 1, 10) &&
+             isValidOptionalString('currencyCode', 1, 10) &&
+             isValidOptionalBool('is_recurring') &&
+             isValidOptionalBool('isRecurring') &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalDateTime('client_updated_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Subcollection 6: /users/{userId}/coach/{checkInId}
+    function isValidCoachCheckIn(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'user_id',
+               'checkInDate', 'check_in_date', 'date',
+               'weekStartDate', 'week_start_date',
+               'previousTdeeKcal', 'previous_tdee_kcal',
+               'newTdeeKcal', 'new_tdee_kcal',
+               'tdeeDeltaKcal', 'tdee_delta_kcal',
+               'previousTargetKcal', 'previous_target_kcal',
+               'newTargetKcal', 'new_target_kcal',
+               'newProteinG', 'new_protein_g',
+               'newCarbsG', 'new_carbs_g',
+               'newFatG', 'new_fat_g',
+               'acceptedByUser', 'accepted_by_user',
+               'notes', 'recommendations',
+               'metabolicState', 'metabolic_state',
+               'client_updated_at', 'sync_status',
+               'createdAt', 'created_at',
+               'updatedAt', 'updated_at'
+             ]) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             (('checkInDate' in data && isValidDateString(data.checkInDate)) ||
+              ('check_in_date' in data && isValidDateString(data.check_in_date)) ||
+              ('date' in data && isValidDateString(data.date))) &&
+             isValidOptionalString('id', 1, 100) &&
+             (!('weekStartDate' in data) || isValidDateString(data.weekStartDate)) &&
+             (!('week_start_date' in data) || isValidDateString(data.week_start_date)) &&
+             isValidOptionalNumber('previousTdeeKcal', 500, 10000) &&
+             isValidOptionalNumber('previous_tdee_kcal', 500, 10000) &&
+             isValidOptionalNumber('newTdeeKcal', 500, 10000) &&
+             isValidOptionalNumber('new_tdee_kcal', 500, 10000) &&
+             isValidOptionalNumber('tdeeDeltaKcal', -2000, 2000) &&
+             isValidOptionalNumber('tdee_delta_kcal', -2000, 2000) &&
+             isValidOptionalNumber('previousTargetKcal', 500, 10000) &&
+             isValidOptionalNumber('previous_target_kcal', 500, 10000) &&
+             isValidOptionalNumber('newTargetKcal', 500, 10000) &&
+             isValidOptionalNumber('new_target_kcal', 500, 10000) &&
+             isValidOptionalNumber('newProteinG', 0, 1000) &&
+             isValidOptionalNumber('new_protein_g', 0, 1000) &&
+             isValidOptionalNumber('newCarbsG', 0, 2000) &&
+             isValidOptionalNumber('new_carbs_g', 0, 2000) &&
+             isValidOptionalNumber('newFatG', 0, 500) &&
+             isValidOptionalNumber('new_fat_g', 0, 500) &&
+             isValidOptionalBool('acceptedByUser') &&
+             isValidOptionalBool('accepted_by_user') &&
+             isValidOptionalString('notes', 0, 5000) &&
+             isValidOptionalString('recommendations', 0, 5000) &&
+             isValidOptionalString('metabolicState', 0, 100) &&
+             isValidOptionalString('metabolic_state', 0, 100) &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalDateTime('client_updated_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // Validator for Subcollection 7: /users/{userId}/reviews/{reviewId}
+    function isValidReviewEntry(data, userId) {
+      return hasOnlyAllowedFields([
+               'id', 'userId', 'user_id',
+               'week_start_date', 'weekStartDate',
+               'end_date', 'endDate',
+               'overall_grade', 'overallGrade',
+               'headline_verdict', 'headlineVerdict',
+               'scorecard_summary', 'scorecardSummary',
+               'cross_domain_correlations', 'crossDomainCorrelations',
+               'training_and_stalled_lifts_audit', 'trainingAudit',
+               'next_week_protocol', 'nextWeekProtocol',
+               'telemetry_snapshot', 'telemetrySnapshot',
+               'review_payload', 'reviewPayload',
+               'client_updated_at', 'sync_status',
+               'createdAt', 'created_at',
+               'updatedAt', 'updated_at'
+             ]) &&
+             (!('userId' in data) || data.userId == userId) &&
+             (!('user_id' in data) || data.user_id == userId) &&
+             (('week_start_date' in data && isValidDateString(data.week_start_date)) ||
+              ('weekStartDate' in data && isValidDateString(data.weekStartDate))) &&
+             isValidOptionalString('id', 1, 100) &&
+             (!('end_date' in data) || isValidDateString(data.end_date)) &&
+             (!('endDate' in data) || isValidDateString(data.endDate)) &&
+             isValidOptionalString('overall_grade', 1, 10) &&
+             isValidOptionalString('overallGrade', 1, 10) &&
+             isValidOptionalString('headline_verdict', 0, 500) &&
+             isValidOptionalString('headlineVerdict', 0, 500) &&
+             isValidOptionalMap('scorecard_summary') &&
+             isValidOptionalMap('scorecardSummary') &&
+             isValidOptionalList('cross_domain_correlations', 20) &&
+             isValidOptionalList('crossDomainCorrelations', 20) &&
+             isValidOptionalList('training_and_stalled_lifts_audit', 50) &&
+             isValidOptionalList('trainingAudit', 50) &&
+             isValidOptionalList('next_week_protocol', 20) &&
+             isValidOptionalList('nextWeekProtocol', 20) &&
+             isValidOptionalMap('telemetry_snapshot') &&
+             isValidOptionalMap('telemetrySnapshot') &&
+             isValidOptionalMap('review_payload') &&
+             isValidOptionalMap('reviewPayload') &&
+             isValidOptionalString('sync_status', 1, 50) &&
+             isValidOptionalDateTime('client_updated_at') &&
+             isValidOptionalDateTime('createdAt') &&
+             isValidOptionalDateTime('created_at') &&
+             isValidOptionalDateTime('updatedAt') &&
+             isValidOptionalDateTime('updated_at');
+    }
+
+    // ===============================================================
+    // Root Collection: /users/{userId}
+    // ===============================================================
+
+    match /users/{userId} {
+      // Profile document is strictly private to the authenticated owner.
+      // Blanket authentication or cross-user reads are forbidden to protect PII.
+      allow read: if isOwner(userId);
+
+      // Create: Allowed only for authenticated user matching userId with valid schema.
+      allow create: if isOwner(userId) &&
+                       isValidUserProfile(request.resource.data, userId);
+
+      // Update: Allowed only for authenticated owner with valid schema and immutable field guards.
+      allow update: if isOwner(userId) &&
+                       isValidUserProfile(request.resource.data, userId) &&
+                       areImmutableFieldsUnchanged(['email', 'createdAt', 'created_at', 'id', 'uid']);
+
+      // Delete: Allowed only by the authenticated owner.
+      allow delete: if isOwner(userId);
+
+      // -------------------------------------------------------------
+      // Subcollection 1: /users/{userId}/days/{date}
+      // Daily logs, day scores, sleep metrics, and biometrics
+      // (Also supports legacy path /dailyLogs/{date})
+      // -------------------------------------------------------------
+      match /days/{date} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidDayLog(request.resource.data, date, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidDayLog(request.resource.data, date, userId) &&
+                         areImmutableFieldsUnchanged(['date', 'log_date', 'createdAt', 'created_at', 'userId', 'user_id', 'id']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      match /dailyLogs/{date} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidDayLog(request.resource.data, date, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidDayLog(request.resource.data, date, userId) &&
+                         areImmutableFieldsUnchanged(['date', 'log_date', 'createdAt', 'created_at', 'userId', 'user_id', 'id']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection 2: /users/{userId}/meals/{mealId}
+      // Food entries, macros, calories, barcodes, and items breakdown
+      // (Also supports legacy path /foodEntries/{mealId})
+      // -------------------------------------------------------------
+      match /meals/{mealId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidMealEntry(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidMealEntry(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      match /foodEntries/{mealId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidMealEntry(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidMealEntry(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection 3: /users/{userId}/workouts/{workoutId}
+      // Gym workout sessions, splits, sets, exercises, volume, and PRs
+      // -------------------------------------------------------------
+      match /workouts/{workoutId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidWorkoutSession(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidWorkoutSession(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+
+        // Optional subcollection for individual workout sets: /workouts/{workoutId}/sets/{setId}
+        match /sets/{setId} {
+          allow read: if isOwner(userId);
+
+          allow create: if isOwner(userId) &&
+                           isValidWorkoutSetItem(request.resource.data, workoutId, userId);
+
+          allow update: if isOwner(userId) &&
+                           isValidWorkoutSetItem(request.resource.data, workoutId, userId) &&
+                           areImmutableFieldsUnchanged(['id', 'workout_id', 'workoutId', 'user_id', 'userId', 'createdAt']);
+
+          allow delete: if isOwner(userId);
+        }
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection 4: /users/{userId}/focus/{sessionId}
+      // Study sessions, focus minutes, pomodoros, and distractions
+      // (Also supports legacy path /studySessions/{sessionId})
+      // -------------------------------------------------------------
+      match /focus/{sessionId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidFocusSession(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidFocusSession(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      match /studySessions/{sessionId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidFocusSession(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidFocusSession(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection 5: /users/{userId}/txns/{txnId}
+      // Money transactions, expenses, payment methods, and ledger items
+      // (Also supports legacy path /transactions/{txnId})
+      // -------------------------------------------------------------
+      match /txns/{txnId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidTransaction(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidTransaction(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      match /transactions/{txnId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidTransaction(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidTransaction(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection 6: /users/{userId}/coach/{checkInId}
+      // Weekly coach check-ins, metabolic recommendations, and adjustments
+      // (Also supports legacy path /coachCheckIns/{checkInId})
+      // -------------------------------------------------------------
+      match /coach/{checkInId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidCoachCheckIn(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidCoachCheckIn(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at', 'checkInDate', 'check_in_date']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      match /coachCheckIns/{checkInId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidCoachCheckIn(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidCoachCheckIn(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at', 'checkInDate', 'check_in_date']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      // -------------------------------------------------------------
+      // Subcollection 7: /users/{userId}/reviews/{reviewId}
+      // Weekly performance reviews, overall grades, telemetry snapshots
+      // (Also supports legacy path /aiWeeklyReviews/{reviewId})
+      // -------------------------------------------------------------
+      match /reviews/{reviewId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidReviewEntry(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidReviewEntry(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at', 'week_start_date', 'weekStartDate']);
+
+        allow delete: if isOwner(userId);
+      }
+
+      match /aiWeeklyReviews/{reviewId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidReviewEntry(request.resource.data, userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidReviewEntry(request.resource.data, userId) &&
+                         areImmutableFieldsUnchanged(['id', 'userId', 'user_id', 'createdAt', 'created_at', 'week_start_date', 'weekStartDate']);
+
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // ===============================================================
+    // Root Fallback: Default Deny All Unmatched
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
