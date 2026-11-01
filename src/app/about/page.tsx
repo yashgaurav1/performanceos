@@ -21,6 +21,7 @@ export default function AboutPage() {
     "@type": "Person",
     name: "Yash Gaurav",
     jobTitle: "Designer of PerformanceOS",
+    description: "BBA student and powerlifter at heart who designed and built PerformanceOS.",
     image: "https://osperformance.vercel.app/images/founder.jpg",
     sameAs: ["https://www.linkedin.com/in/yash-gaurav/"],
   };
@@ -67,7 +68,7 @@ export default function AboutPage() {
             </a>
           </h2>
           <p className="text-sm text-[#A1A1AA] leading-relaxed">
-            I built PerformanceOS because I wanted a tracker that understands Indian food and never makes you feel guilty.
+            I&apos;m a BBA student and a powerlifter at heart, working my way back to being a gym freak. I built PerformanceOS because I wanted a tracker that understands Indian food and never makes you feel guilty.
           </p>
         </div>
       </div>
@@ -132,7 +133,7 @@ export default function AboutPage() {
           Who is behind PerformanceOS?
         </h2>
         <p>
-          PerformanceOS is designed and engineered by Yash Gaurav, based in Bengaluru, India. Every algorithm, interaction, and design token is crafted to deliver a quiet, high-craft software experience that respects your attention and your privacy.
+          PerformanceOS is designed and built by Yash Gaurav, a BBA student in Bengaluru, India, and a powerlifter at heart who is working his way back to being a gym freak. Every algorithm, interaction, and design token is crafted to deliver a quiet, high-craft software experience that respects your attention and your privacy.
         </p>
         <p>
           You can connect with Yash on{" "}

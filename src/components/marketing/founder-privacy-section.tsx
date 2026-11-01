@@ -90,7 +90,7 @@ export function FounderPrivacySection() {
             </a>
           </div>
           <p className="text-xs sm:text-sm text-[#A1A1AA] leading-relaxed">
-            I built PerformanceOS because I wanted a tracker that understands Indian food and never makes you feel guilty.
+            I&apos;m a BBA student and a powerlifter at heart, working my way back to being a gym freak. I built PerformanceOS because I wanted a tracker that understands Indian food and never makes you feel guilty.
           </p>
         </div>
       </div>

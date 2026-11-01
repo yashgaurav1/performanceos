@@ -49,6 +49,7 @@ export default async function FoodCaloriesPage({ params }: PageProps) {
       "@type": "Person",
       name: "Yash Gaurav",
       jobTitle: "Designer of PerformanceOS",
+      description: "BBA student and powerlifter at heart who designed and built PerformanceOS.",
       sameAs: "https://www.linkedin.com/in/yash-gaurav/",
     },
     recipeYield: `${item.recipe.yieldGrams} g`,

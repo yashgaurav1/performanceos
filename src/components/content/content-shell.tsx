@@ -92,7 +92,7 @@ export function ContentShell({
                 Written by Yash Gaurav · Designer of PerformanceOS
               </div>
               <p className="text-xs text-[#A1A1AA] mt-1">
-                Independent product designer and engineer. Focused on metabolic calculations, sports nutrition, and mindful software design.
+                BBA student and powerlifter at heart, working his way back to being a gym freak. Built PerformanceOS for his own training and everyday Indian meals.
               </p>
             </div>
           </div>
