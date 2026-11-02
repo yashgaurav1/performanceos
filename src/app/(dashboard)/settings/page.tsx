@@ -12,6 +12,7 @@ import { updateProfile } from "@/lib/db/repo";
 import { clearLocalData, exportLocalData } from "@/lib/demo/seed";
 import { getValidIdToken } from "@/lib/firebase/auth-ready";
 import { FirebaseAuthCard } from "@/components/settings/firebase-auth-card";
+import { usePWAInstall } from "@/lib/hooks/use-pwa-install";
 import type { Profile } from "@/types/database.types";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function SettingsPage() {
   const profile = useProfile();
+  const { isInstalled, promptInstall } = usePWAInstall();
   const [draft, setDraft] = useState<Partial<Record<keyof Profile, string>>>({});
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -185,6 +187,39 @@ export default function SettingsPage() {
             <div className="rounded-lg border border-line/60 bg-surface-2/40 p-2.5">
               <span className="text-faint block">Energy Burn</span>
               <span className="text-fg font-semibold">Adaptive daily burn</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* PWA / App Installation Card */}
+      <Card>
+        <CardHeader
+          eyebrow="Progressive Web App"
+          title="Install App & Offline Capability"
+        />
+        <div className="space-y-3">
+          <p className="text-xs text-muted">
+            PerformanceOS functions as an installable standalone application with offline support.
+            Your app shell and logged data are cached locally on your device for instant launch.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {isInstalled ? (
+              <div className="inline-flex items-center gap-1.5 rounded-xl border border-emerald/30 bg-emerald/10 px-3 py-1.5 text-xs font-semibold text-emerald">
+                <CheckCircle2 size={14} /> Installed as Standalone App
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => void promptInstall()}
+                className="gap-2"
+              >
+                <Download size={16} /> Install PerformanceOS
+              </Button>
+            )}
+            <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald" />
+              Service Worker Active
             </div>
           </div>
         </div>

@@ -14,6 +14,9 @@ coverage
 
 assets-src/
 
+# Serwist Service Worker Chunks
+public/swe-worker*
+
 # Test & Audit reports
 test-results/
 playwright-report/

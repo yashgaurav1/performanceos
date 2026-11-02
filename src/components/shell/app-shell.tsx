@@ -9,6 +9,7 @@ import { MobileTopBar } from "./top-bar";
 import { OmniLogSheet } from "./omni-log";
 import { DeveloperDrawer } from "./developer-drawer";
 import { FocusTimerEngine } from "@/components/study/focus-timer-engine";
+import { PWAInstallBanner } from "@/components/pwa/pwa-install-banner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [omni, setOmni] = useState(false);
@@ -73,6 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <OmniLogSheet open={omni} onOpenChange={setOmni} />
         <FocusTimerEngine />
         <DeveloperDrawer />
+        <PWAInstallBanner />
       </ClientGate>
     </div>
   );

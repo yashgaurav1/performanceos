@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ type Choice = "a" | "b" | null;
 
 export function PhotoScannerConfirmationDrawer({ open, onOpenChange, date }: { open: boolean; onOpenChange: (o: boolean) => void; date: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [image, setImage] = useState<CompressedImage | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [hint, setHint] = useState("");
@@ -196,7 +198,27 @@ export function PhotoScannerConfirmationDrawer({ open, onOpenChange, date }: { o
           </Button>
         </div>
       ) : undefined}>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          void pick(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          void pick(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
 
       {stage === "capture" && (
         <div className="space-y-3">
@@ -216,15 +238,22 @@ export function PhotoScannerConfirmationDrawer({ open, onOpenChange, date }: { o
           </div>
           {analyse.isError && <p className="rounded-xl border border-coral/30 bg-coral/10 p-3 text-xs text-coral">{analyse.error.message}</p>}
           <div className="grid grid-cols-2 gap-2">
-            <Button onClick={() => fileRef.current?.click()}><ImagePlus size={16} /> {image ? "Retake" : "Choose"}</Button>
-            <Button
-              variant="primary"
-              disabled={!image || !isAuthReady || analyse.isPending}
-              onClick={() => image && analyse.mutate(image)}
-            >
-              {!isAuthReady ? "Authenticating..." : analyse.isPending ? "Analysing..." : "Analyse"}
+            <Button type="button" onClick={() => fileRef.current?.click()}>
+              <Camera size={16} /> {image ? "Retake photo" : "Open camera"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => galleryRef.current?.click()}>
+              <ImagePlus size={16} /> Choose file
             </Button>
           </div>
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            disabled={!image || !isAuthReady || analyse.isPending}
+            onClick={() => image && analyse.mutate(image)}
+          >
+            {!isAuthReady ? "Authenticating..." : analyse.isPending ? "Analysing plate..." : "Analyse Meal"}
+          </Button>
         </div>
       )}
 

@@ -1,4 +1,21 @@
-# PerformanceOS Polish & Release Report (Section J)
+# PerformanceOS Polish & Release Report
+
+## Progressive Web App (PWA) Implementation
+- **Installable Web App Manifest:**
+  - Configured in `src/app/manifest.ts` with `short_name: "PerformanceOS"`, `start_url: "/today"`, `display: "standalone"`, `theme_color: "#0C0C0D"`, and `background_color: "#0C0C0D"`.
+  - Generated 192x192 and 512x512 standard (`any`) and padded safe-zone (`maskable`) icons in `public/icons/`.
+  - Added 3 app shortcuts: Log meal (`/eat?action=scan`), Start workout (`/train`), and Ask coach (`/coach?action=ask`).
+  - Added install sheet screenshots for mobile narrow (`750x1334`) and desktop wide (`1280x720`).
+- **Service Worker via Serwist:**
+  - Integrated `@serwist/next` with `src/app/sw.ts` outputting to `public/sw.js`.
+  - Configured `NetworkOnly` for all `/api/` endpoints to guarantee real-time responses and prevent caching of authenticated or LLM API calls.
+  - Implemented `NetworkFirst` offline caching for all core app shell routes (`/today`, `/eat`, `/train`, `/coach`, `/money`, `/goals`, `/settings`, `/study`) and `CacheFirst` / `StaleWhileRevalidate` for static assets, fonts, and images.
+- **Custom Install UX:**
+  - Created `src/lib/hooks/use-pwa-install.ts` supporting `beforeinstallprompt` on Android and Chromium desktops with persistent dismissal state (7-day cooldown).
+  - Built `src/components/pwa/ios-install-sheet.tsx` with a step-by-step visual guide for iPhone Safari users (Share -> Add to Home Screen -> Add).
+  - Mounted install prompts in `AppShell` (bottom floating banner), `DesktopSidebar` (Install App button), and `SettingsPage` (PWA status card).
+- **Meal Scanner Camera Direct Access:**
+  - Configured `<input accept="image/*" capture="environment">` in `src/components/eat/photo-scanner-drawer.tsx` to directly launch the mobile device's camera, with a separate option to choose photos from the local gallery.
 
 ## Section J Summary
 

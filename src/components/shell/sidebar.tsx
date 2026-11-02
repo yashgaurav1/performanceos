@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogIn, Plus, Settings, Sparkles } from "lucide-react";
+import { LogIn, Plus, Settings, Sparkles, Download } from "lucide-react";
+import { usePWAInstall } from "@/lib/hooks/use-pwa-install";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ALL_NAV } from "./nav-items";
@@ -13,6 +14,7 @@ import { useFirebaseAuth } from "@/lib/firebase/auth-context";
 export function DesktopSidebar({ onOmni }: { onOmni: () => void }) {
   const path = usePathname();
   const { user } = useFirebaseAuth();
+  const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-bg/95 backdrop-blur-2xl px-3.5 py-5 lg:flex">
       <div className="mb-6 px-2">
@@ -114,6 +116,16 @@ export function DesktopSidebar({ onOmni }: { onOmni: () => void }) {
             <LogIn size={13} />
             <span>Sign In</span>
           </Link>
+        )}
+
+        {isInstallable && !isInstalled && (
+          <button
+            type="button"
+            onClick={() => void promptInstall()}
+            className="flex h-10 w-full items-center gap-3 rounded-xl px-2.5 text-sm font-medium text-flame hover:bg-flame/10 transition-colors"
+          >
+            <Download size={18} /> Install App
+          </button>
         )}
 
         <Link

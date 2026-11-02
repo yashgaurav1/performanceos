@@ -26,7 +26,7 @@ function EatInner() {
   const params = useSearchParams();
   const profile = useProfile();
   const entries = useFoodEntries(today);
-  const [scanOpen, setScanOpen] = useState(params.get("scan") === "1");
+  const [scanOpen, setScanOpen] = useState(params.get("scan") === "1" || params.get("action") === "scan");
   const [manual, setManual] = useState(false);
   if (!today) return null;
   const totals = aggregateDayNutrition(entries);
@@ -40,7 +40,7 @@ function EatInner() {
       <QuickProteinAndStaplesBar date={today} />
       <MealLog entries={entries} />
       <PhotoScannerConfirmationDrawer open={scanOpen} date={today}
-        onOpenChange={(o) => { setScanOpen(o); if (!o && params.get("scan")) router.replace("/eat"); }} />
+        onOpenChange={(o) => { setScanOpen(o); if (!o && (params.get("scan") || params.get("action"))) router.replace("/eat"); }} />
       <ManualAddSheet open={manual} onOpenChange={setManual} date={today} />
     </div>
   );

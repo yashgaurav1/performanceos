@@ -195,6 +195,19 @@ for (const file of filesToCheck) {
   }
 }
 
+// Check PWA assets
+const pwaFiles = [
+  "public/icons/icon-192x192.png",
+  "public/icons/icon-512x512.png",
+  "public/icons/maskable-icon-192x192.png",
+  "public/icons/maskable-icon-512x512.png",
+  "public/screenshots/narrow-today.png",
+  "public/screenshots/wide-dashboard.png",
+];
+for (const pwaFile of pwaFiles) {
+  assert(fs.existsSync(pwaFile), `PWA asset ${pwaFile} must exist`);
+}
+
 if (errors.length > 0) {
   console.error(`\nFound ${errors.length} consistency issues:`);
   errors.forEach((e) => console.error(`- ${e}`));
