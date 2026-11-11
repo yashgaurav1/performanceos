@@ -62,6 +62,13 @@ export async function POST(req: Request) {
       })
       .filter((m) => m.text.length > 0);
 
+    if (conversation.length === 0 || conversation[conversation.length - 1]?.role !== "user") {
+      return NextResponse.json(
+        { error: "Send a message for the coach to answer.", code: "INVALID_REQUEST" },
+        { status: 400 }
+      );
+    }
+
     // 4. Build 14-day telemetry summary on the server
     const telemetry = await buildFourteenDaySummary(uid, today);
 
