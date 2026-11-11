@@ -1,5 +1,5 @@
 import fs from "fs";
-import { FOODS_DATABASE, STANDARD_PORTIONS, matchKnownDish } from "../src/data/foods";
+import { FOODS_DATABASE, STANDARD_PORTIONS } from "../src/data/foods";
 import { SCAN_MEALS } from "../src/data/scan-demo";
 
 const errors: string[] = [];

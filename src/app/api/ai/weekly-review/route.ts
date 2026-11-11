@@ -4,6 +4,7 @@ import { WeeklyReviewRequestSchema, WeeklyReviewSchema, type WeeklyReview, type 
 import { WEEKLY_REVIEW_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { getModel } from "@/lib/ai/models";
 import { recordRun } from "@/lib/ai/cost-ledger";
+import { guardAiRequest, recordSpend } from "@/lib/ai/server-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -108,17 +109,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ review: simulatedReview, telemetry, ledger, cached: false, id });
     }
 
-    const monthlyCap = 10.0;
-    const currentSpend = parsed.data.month_spend_usd ?? 0;
-    if (currentSpend >= monthlyCap) {
-      return NextResponse.json(
-        {
-          error: `Monthly AI cap reached ($${currentSpend.toFixed(2)} / $${monthlyCap.toFixed(2)}).`,
-          code: "SPEND_CAP_EXCEEDED",
-        },
-        { status: 429 }
-      );
-    }
+    // Paid model call: verified identity, server-side monthly spend cap and durable rate limit.
+    const guard = await guardAiRequest(req, "weekly_review");
+    if (guard.errorResponse) return guard.errorResponse;
 
     try {
       const { object, usage } = await generateObject({
@@ -129,6 +122,7 @@ export async function POST(req: Request) {
         prompt: `<telemetry_json>\n${JSON.stringify(telemetry)}\n</telemetry_json>\nWrite this week's review.`,
       });
       const ledger = await recordRun(null, "weekly_review", m.modelId, usage);
+      await recordSpend(guard.auth.uid, Number(ledger.estimated_cost_usd) || 0);
       const id = crypto.randomUUID();
       return NextResponse.json({ review: object, telemetry, ledger, cached: false, id });
     } catch (e: unknown) {

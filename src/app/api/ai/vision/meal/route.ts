@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
-import { verifyServerAuth, checkSpendCap, recordSpend, verifyAppCheck, checkUserRateLimit } from "@/lib/ai/server-auth";
+import { guardAiRequest, recordSpend } from "@/lib/ai/server-auth";
 import type { FoodVisionEstimation } from "@/lib/ai/schemas";
 import { matchKnownDish } from "@/data/foods";
 
@@ -61,52 +61,11 @@ const mealVisionSchema: Schema = {
 
 export async function POST(req: Request) {
   try {
-    // 0. Verify Firebase App Check
-    const { valid: appCheckValid, errorResponse: appCheckError } = await verifyAppCheck(req);
-    if (!appCheckValid && appCheckError) {
-      return appCheckError;
-    }
-
-    // 1. Verify Firebase ID Token from Authorization header
-    const { auth, errorResponse: authError } = await verifyServerAuth(req);
-    if (authError || !auth) {
-      return (
-        authError ||
-        NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 })
-      );
-    }
-
+    // App Check, verified identity, monthly spend cap and durable rate limit.
+    const guard = await guardAiRequest(req, "vision");
+    if (guard.errorResponse) return guard.errorResponse;
+    const { auth } = guard;
     const uid = auth.uid;
-
-    // 2. Enforce per-user monthly spend cap stored on users/{uid}.aiSpendMonth
-    const capCheck = await checkSpendCap(uid);
-    if (!capCheck.allowed) {
-      return (
-        capCheck.errorResponse ||
-        NextResponse.json(
-          {
-            error: "The coach is taking a short break. Please try again later.",
-            code: "SPEND_CAP_EXCEEDED",
-          },
-          { status: 429 }
-        )
-      );
-    }
-
-    // 2.1 Enforce per-user rate limit (30/hr, 200/day)
-    const rateCheck = await checkUserRateLimit(uid, "vision");
-    if (!rateCheck.allowed) {
-      return (
-        rateCheck.errorResponse ||
-        NextResponse.json(
-          {
-            error: "The coach is taking a short break. Please try again later.",
-            code: "RATE_LIMIT_EXCEEDED",
-          },
-          { status: 429 }
-        )
-      );
-    }
 
     // Parse request body
     const body = (await req.json().catch(() => ({}))) as {

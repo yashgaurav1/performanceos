@@ -81,13 +81,6 @@ export function MorningBiometricsCard({ date }: { date: string }) {
   const commitWeight = () => {
     if (weightDraft === null) return;
     const kg = Number(weightDraft);
-    if (kg > 20 && kg < 300) {
-      void fetch("/api/weight/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scaleWeightKg: kg, date }),
-      }).catch(() => undefined);
-    }
     void patchDailyLog(date, {
       body_weight_kg:
         weightDraft.trim() === ""

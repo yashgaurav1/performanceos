@@ -1,6 +1,6 @@
 /**
- * Row types mirroring supabase/migrations/0001_command_center_schema.sql.
- * Numeric columns are typed as `number` (PostgREST returns numeric as number for these precisions).
+ * Row types for records stored in Dexie (client) and mirrored to Firestore (users/{uid}/...).
+ * Numeric fields are plain numbers; money is integer minor units (amount_minor).
  */
 import type { Domain } from "@/lib/math/goals-math";
 import type { SetType } from "@/lib/math/gym-math";

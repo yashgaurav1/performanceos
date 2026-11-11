@@ -17,21 +17,6 @@ export function QuickProteinAndStaplesBar({ date }: { date: string }) {
             key={s.id}
             type="button"
             onClick={async () => {
-              void fetch("/api/food/log", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  date,
-                  foodName: s.label,
-                  brand: "Quick Staples",
-                  servingGrams: 100,
-                  calories: s.totals.kcal_point,
-                  protein: s.totals.protein_g,
-                  carbs: s.totals.carbs_g,
-                  fat: s.totals.fat_g,
-                }),
-              }).catch(() => undefined);
-
               await addFoodEntry({
                 log_date: date,
                 meal_slot: defaultMealSlot(),

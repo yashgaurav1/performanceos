@@ -1,8 +1,9 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { jwtVerify, createRemoteJWKSet, decodeJwt } from "jose";
+import { createHash } from "node:crypto";
+import { jwtVerify, createRemoteJWKSet } from "jose";
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
-import { FieldValue } from "firebase-admin/firestore";
+import { checkRateLimit } from "@/lib/rate-limiter";
 
 const FIREBASE_JWKS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
@@ -19,7 +20,12 @@ const PROJECT_ID =
 
 export interface ServerAuthResult {
   uid: string;
+  /** True for the shared read-only demo athlete. */
   isDemo: boolean;
+  /** True only when a Firebase ID token was cryptographically verified. */
+  isVerified: boolean;
+  /** Firebase anonymous sign-in or unverified demo caller. */
+  isAnonymous: boolean;
   email?: string;
 }
 
@@ -82,94 +88,92 @@ export async function verifyAppCheck(req: Request): Promise<{
   }
 }
 
+/** The shared, read-only demo athlete. Unverified callers are always mapped here. */
+export const DEMO_UID = "ayush";
+
 /**
- * Verifies the Firebase ID token from the Authorization header (Bearer <token>).
- * Priority:
- * 1. Firebase Admin SDK verifyIdToken
- * 2. Google Public JWKS fallback
+ * Resolves who is calling.
+ *
+ * Only a verified Firebase ID token establishes a real identity. Client-supplied
+ * headers such as `x-athlete-uid` are never trusted as a uid: without a valid
+ * token the caller becomes the read-only demo athlete (when demo is requested
+ * or in local dev) or is rejected.
  */
 export async function verifyServerAuth(req: Request): Promise<{
   auth: ServerAuthResult | null;
   errorResponse?: Response;
 }> {
   const authHeader = req.headers.get("authorization");
-  const demoHeader =
-    req.headers.get("x-demo-user") ||
-    req.headers.get("x-athlete-uid") ||
-    "";
+  const wantsDemo = Boolean(req.headers.get("x-demo-user") || req.headers.get("x-athlete-uid"));
 
-  let uid: string | null = null;
-  let email: string | undefined;
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7).trim();
-    if (token) {
-      // 1. Attempt verification with Firebase Admin
-      try {
-        const adminAuth = getAdminAuth();
-        const decoded = await adminAuth.verifyIdToken(token);
-        uid = decoded.uid;
-        email = decoded.email;
-      } catch {
-        // 2. Fallback to Google Public JWKS
-        try {
-          const { payload } = await jwtVerify(token, FIREBASE_JWKS, {
-            issuer: `https://securetoken.google.com/${PROJECT_ID}`,
-            audience: PROJECT_ID,
-          });
-          if (payload.sub) {
-            uid = payload.sub;
-            email = typeof payload.email === "string" ? payload.email : undefined;
-          }
-        } catch {
-          // Token is invalid or unverified
-          try {
-            const decoded = decodeJwt(token);
-            if (decoded && decoded.sub && process.env.NODE_ENV !== "production") {
-              uid = decoded.sub;
-              email = typeof decoded.email === "string" ? decoded.email : undefined;
-            }
-          } catch {
-            // completely unparseable
-          }
-        }
-      }
-    }
-  }
-
-  // Fallback to demo mode if explicitly designated or in local dev
-  if (!uid) {
-    if (demoHeader) {
-      uid = demoHeader;
-    } else if (!authHeader && process.env.NODE_ENV !== "production") {
-      uid = "ayush";
-    }
-  }
-
-  if (!uid) {
-    return {
-      auth: null,
-      errorResponse: NextResponse.json(
-        {
-          error: "Unauthorized: Missing or invalid Firebase ID token in Authorization header.",
-          code: "UNAUTHORIZED",
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (token) {
+    const verified = await verifyIdTokenSafe(token);
+    if (verified) {
+      return {
+        auth: {
+          uid: verified.uid,
+          email: verified.email,
+          isDemo: false,
+          isVerified: true,
+          isAnonymous: verified.isAnonymous,
         },
-        { status: 401 }
-      ),
-    };
+      };
+    }
+  }
+
+  if (wantsDemo || (!token && process.env.NODE_ENV !== "production")) {
+    return { auth: { uid: DEMO_UID, isDemo: true, isVerified: false, isAnonymous: true } };
   }
 
   return {
-    auth: {
-      uid,
-      isDemo: uid === "ayush",
-      email,
-    },
+    auth: null,
+    errorResponse: NextResponse.json(
+      { error: "Unauthorized: missing or invalid Firebase ID token.", code: "UNAUTHORIZED" },
+      { status: 401 }
+    ),
   };
 }
 
+async function verifyIdTokenSafe(
+  token: string
+): Promise<{ uid: string; email?: string; isAnonymous: boolean } | null> {
+  try {
+    const decoded = await getAdminAuth().verifyIdToken(token);
+    return {
+      uid: decoded.uid,
+      email: decoded.email,
+      isAnonymous: decoded.firebase?.sign_in_provider === "anonymous",
+    };
+  } catch {
+    // Admin SDK not configured or token rejected: verify the signature against Google's public keys.
+  }
+  if (!PROJECT_ID) return null;
+  try {
+    const { payload } = await jwtVerify(token, FIREBASE_JWKS, {
+      issuer: `https://securetoken.google.com/${PROJECT_ID}`,
+      audience: PROJECT_ID,
+    });
+    if (!payload.sub) return null;
+    const fb = payload.firebase as { sign_in_provider?: string } | undefined;
+    return {
+      uid: payload.sub,
+      email: typeof payload.email === "string" ? payload.email : undefined,
+      isAnonymous: fb?.sign_in_provider === "anonymous",
+    };
+  } catch {
+    return null;
+  }
+}
+
+const AI_USAGE = "ai_usage";
+
+const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
+
 /**
- * Enforces per-user monthly spend cap stored on users/{uid}.aiSpendMonth
+ * Enforces the per-user monthly AI spend cap stored on ai_usage/{uid}
+ * (server-only: Firestore rules deny all client access, so users can't reset it).
+ * aiSpendMonth resets when aiSpendMonthKey (YYYY-MM) rolls over.
  */
 export async function checkSpendCap(uid: string): Promise<{
   allowed: boolean;
@@ -178,19 +182,15 @@ export async function checkSpendCap(uid: string): Promise<{
   errorResponse?: Response;
 }> {
   let currentSpend = 0;
-  let spendCap = 10.0; // Default $10.00 monthly cap
+  let spendCap = 10.0;
 
   try {
-    const db = getAdminFirestore();
-    const userDoc = await db.collection("users").doc(uid).get();
-    if (userDoc.exists) {
-      const data = userDoc.data();
-      if (data?.aiSpendMonth !== undefined && data?.aiSpendMonth !== null) {
-        currentSpend = Number(data.aiSpendMonth) || 0;
-      }
-      if (data?.aiSpendCap !== undefined && data?.aiSpendCap !== null) {
-        spendCap = Number(data.aiSpendCap) || 10.0;
-      }
+    const snap = await getAdminFirestore().collection(AI_USAGE).doc(uid).get();
+    const data = snap.exists ? snap.data() : undefined;
+    if (data) {
+      const sameMonth = data.aiSpendMonthKey === undefined || data.aiSpendMonthKey === monthKey();
+      if (sameMonth && data.aiSpendMonth != null) currentSpend = Number(data.aiSpendMonth) || 0;
+      if (data.aiSpendCap != null) spendCap = Number(data.aiSpendCap) || 10.0;
     }
   } catch (err) {
     console.warn("Firestore spend cap check notice:", err);
@@ -203,7 +203,7 @@ export async function checkSpendCap(uid: string): Promise<{
       spendCap,
       errorResponse: NextResponse.json(
         {
-          error: `Monthly AI spend cap reached ($${currentSpend.toFixed(2)} / $${spendCap.toFixed(2)}). Use Quick Add instead.`,
+          error: `Monthly AI limit reached ($${currentSpend.toFixed(2)} / $${spendCap.toFixed(2)}). Use Quick Add instead.`,
           code: "SPEND_CAP_EXCEEDED",
           currentSpend,
           spendCap,
@@ -213,90 +213,162 @@ export async function checkSpendCap(uid: string): Promise<{
     };
   }
 
-  return {
-    allowed: true,
-    currentSpend,
-    spendCap,
-  };
+  return { allowed: true, currentSpend, spendCap };
 }
 
-/**
- * Atomically increments users/{uid}.aiSpendMonth in Firestore
- */
+/** Adds cost to ai_usage/{uid}.aiSpendMonth, starting a fresh total when the month changes. */
 export async function recordSpend(uid: string, costUsd: number): Promise<void> {
   if (costUsd <= 0) return;
-
+  const key = monthKey();
   try {
     const db = getAdminFirestore();
-    const userRef = db.collection("users").doc(uid);
-    await userRef.set(
-      {
-        aiSpendMonth: FieldValue.increment(costUsd),
-        aiSpendUpdatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    const ref = db.collection(AI_USAGE).doc(uid);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() : undefined;
+      const prev = data?.aiSpendMonthKey === key ? Number(data?.aiSpendMonth) || 0 : 0;
+      tx.set(
+        ref,
+        { aiSpendMonth: prev + costUsd, aiSpendMonthKey: key, aiSpendUpdatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    });
   } catch (err) {
-    console.warn("Failed to increment aiSpendMonth in Firestore:", err);
+    console.warn("Failed to record AI spend in Firestore:", err);
   }
 }
 
+export type AiEndpoint = "coach" | "vision" | "weekly_review";
 
 export interface RateLimitResult {
   allowed: boolean;
   errorResponse?: Response;
 }
 
-/**
- * Enforces per-user rate limits (30 req/hr, 200 req/day) stored in Firestore.
- */
-export async function checkUserRateLimit(
-  uid: string,
-  endpoint: "coach" | "vision"
-): Promise<RateLimitResult> {
-  const HOURLY_LIMIT = 30;
-  const DAILY_LIMIT = 200;
+interface Bucket {
+  key: string;
+  perHour: number;
+  perDay: number;
+}
 
+/** Signed-in (non-anonymous) users. */
+const USER_LIMITS = { perHour: 30, perDay: 200 };
+/** Each anonymous / demo visitor, keyed by hashed IP. */
+const GUEST_LIMITS = { perHour: 8, perDay: 25 };
+/** All anonymous / demo traffic combined, so rotating IPs or minting anonymous accounts can't run up the bill. */
+const GUEST_GLOBAL_LIMITS = { perHour: 60, perDay: 300 };
+
+function clientIp(req: Request): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+function bucketsFor(req: Request, auth: ServerAuthResult): Bucket[] {
+  if (auth.isVerified && !auth.isAnonymous) {
+    return [{ key: `user_${auth.uid}`, ...USER_LIMITS }];
+  }
+  const ipHash = createHash("sha256").update(clientIp(req)).digest("hex").slice(0, 24);
+  const buckets: Bucket[] = [
+    { key: `guest_ip_${ipHash}`, ...GUEST_LIMITS },
+    { key: "guest_all", ...GUEST_GLOBAL_LIMITS },
+  ];
+  if (auth.isVerified) buckets.unshift({ key: `user_${auth.uid}`, ...GUEST_LIMITS });
+  return buckets;
+}
+
+const rateLimited = () =>
+  NextResponse.json(
+    {
+      error: "The coach is taking a short break. Please try again later.",
+      code: "RATE_LIMIT_EXCEEDED",
+      friendlyMessage: "The coach is taking a short break. Please try again later.",
+    },
+    { status: 429, headers: { "Retry-After": "3600" } }
+  );
+
+/**
+ * Durable rate limit shared by every serverless instance, stored in
+ * Firestore at rate_limits/{bucket}__{endpoint} and updated in a transaction.
+ * If Firestore is unreachable it falls back to the per-instance in-memory limiter.
+ */
+export async function enforceAiRateLimit(
+  req: Request,
+  auth: ServerAuthResult,
+  endpoint: AiEndpoint
+): Promise<RateLimitResult> {
+  const buckets = bucketsFor(req, auth);
   const now = new Date();
-  const currentHourKey = now.toISOString().slice(0, 13); // e.g. "2026-10-31T02"
-  const currentDayKey = now.toISOString().slice(0, 10);  // e.g. "2026-10-31"
+  const hourKey = now.toISOString().slice(0, 13);
+  const dayKey = now.toISOString().slice(0, 10);
 
   try {
     const db = getAdminFirestore();
-    const docRef = db.collection("users").doc(uid).collection("rate_limits").doc(endpoint);
-    const snap = await docRef.get();
-    const data = snap.data() || {};
-
-    const hourCount = data.hourKey === currentHourKey ? (Number(data.hourCount) || 0) : 0;
-    const dayCount = data.dayKey === currentDayKey ? (Number(data.dayCount) || 0) : 0;
-
-    if (hourCount >= HOURLY_LIMIT || dayCount >= DAILY_LIMIT) {
-      return {
-        allowed: false,
-        errorResponse: NextResponse.json(
-          {
-            error: "The coach is taking a short break. Please try again later.",
-            code: "RATE_LIMIT_EXCEEDED",
-            friendlyMessage: "The coach is taking a short break. Please try again later.",
-          },
-          { status: 429 }
-        ),
-      };
-    }
-
-    await docRef.set(
-      {
-        hourKey: currentHourKey,
-        hourCount: hourCount + 1,
-        dayKey: currentDayKey,
-        dayCount: dayCount + 1,
-        lastRequestAt: now.toISOString(),
-      },
-      { merge: true }
-    );
+    const allowed = await db.runTransaction(async (tx) => {
+      const refs = buckets.map((b) => db.collection("rate_limits").doc(`${b.key}__${endpoint}`));
+      const snaps = await Promise.all(refs.map((r) => tx.get(r)));
+      const counts = snaps.map((s) => {
+        const d = (s.exists ? s.data() : undefined) ?? {};
+        return {
+          hour: d.hourKey === hourKey ? Number(d.hourCount) || 0 : 0,
+          day: d.dayKey === dayKey ? Number(d.dayCount) || 0 : 0,
+        };
+      });
+      const blocked = buckets.some((b, i) => {
+        const c = counts[i];
+        return c !== undefined && (c.hour >= b.perHour || c.day >= b.perDay);
+      });
+      if (blocked) return false;
+      refs.forEach((ref, i) => {
+        const c = counts[i] ?? { hour: 0, day: 0 };
+        tx.set(ref, {
+          hourKey,
+          hourCount: c.hour + 1,
+          dayKey,
+          dayCount: c.day + 1,
+          updatedAt: now.toISOString(),
+        });
+      });
+      return true;
+    });
+    return allowed ? { allowed: true } : { allowed: false, errorResponse: rateLimited() };
   } catch (err) {
-    console.warn(`Firestore rate limit check notice for ${endpoint}:`, err);
+    console.warn(`Durable rate limit unavailable for ${endpoint}, using in-memory fallback:`, err);
+    for (const b of buckets) {
+      const hour = checkRateLimit(`${b.key}:${endpoint}:h`, b.perHour, 3_600_000);
+      const day = checkRateLimit(`${b.key}:${endpoint}:d`, b.perDay, 86_400_000);
+      if (!hour.ok || !day.ok) return { allowed: false, errorResponse: rateLimited() };
+    }
+    return { allowed: true };
+  }
+}
+
+/**
+ * One gate for every AI route: App Check, identity, monthly spend cap, rate limit.
+ * Returns either the caller or the response to send back.
+ */
+export async function guardAiRequest(
+  req: Request,
+  endpoint: AiEndpoint
+): Promise<{ auth: ServerAuthResult; errorResponse?: undefined } | { auth?: undefined; errorResponse: Response }> {
+  const appCheck = await verifyAppCheck(req);
+  if (!appCheck.valid && appCheck.errorResponse) return { errorResponse: appCheck.errorResponse };
+
+  const { auth, errorResponse } = await verifyServerAuth(req);
+  if (!auth) {
+    return {
+      errorResponse:
+        errorResponse ?? NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 }),
+    };
   }
 
-  return { allowed: true };
+  const cap = await checkSpendCap(auth.uid);
+  if (!cap.allowed && cap.errorResponse) return { errorResponse: cap.errorResponse };
+
+  const rate = await enforceAiRateLimit(req, auth, endpoint);
+  if (!rate.allowed && rate.errorResponse) return { errorResponse: rate.errorResponse };
+
+  return { auth };
 }

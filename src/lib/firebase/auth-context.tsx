@@ -179,10 +179,12 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
 
   async function syncFirebaseWithBackend(fbUser: { email: string; uid: string; displayName?: string | null; photoURL?: string | null }) {
     try {
+      const idToken = await getFirebaseAuth()?.currentUser?.getIdToken();
+      if (!idToken) return null;
       const res = await fetch("/api/auth/firebase", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fbUser),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ displayName: fbUser.displayName ?? null }),
       });
       return await res.json();
     } catch {
@@ -258,47 +260,20 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
         return { success: true };
       } catch (fbErr: unknown) {
         const errObj = fbErr as { code?: string; message?: string };
-        // If wrong password in Firebase, inform user
-        if (errObj.code === "auth/wrong-password" || errObj.code === "auth/invalid-credential") {
-          // Fall through to test database credentials
-        }
+        const msg =
+          errObj.code === "auth/wrong-password" || errObj.code === "auth/invalid-credential" || errObj.code === "auth/user-not-found"
+            ? "Wrong email or password."
+            : errObj.code === "auth/too-many-requests"
+              ? "Too many attempts. Try again in a few minutes."
+              : errObj.message || "Could not sign in.";
+        toast("Sign in failed", { tone: "coral", body: msg });
+        return { success: false, error: msg };
       }
     }
 
-    // 2. Attempt Relational Database Authentication
-    try {
-      const dbRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail, password: pass }),
-      });
-      const dbData = await dbRes.json();
-      if (dbRes.ok && dbData.success) {
-        const activeUser: AuthUserProfile = {
-          uid: dbData.user.id,
-          email: dbData.user.email,
-          displayName: dbData.user.name,
-          photoURL: null,
-          isAnonymous: false,
-          provider: "password",
-        };
-        setUser(activeUser);
-        localStorage.removeItem(DEMO_USER_KEY);
-        void updateLocalProfile({ display_name: dbData.user.name });
-        toast(`Welcome back, ${dbData.user.name}`, { tone: "emerald", body: "Connected to database engine." });
-        return { success: true };
-      }
-
-      toast("Sign in failed", {
-        tone: "coral",
-        body: dbData.error || "Invalid email or password. Click 'Create Account' to register.",
-      });
-      return { success: false, error: dbData.error };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast("Sign in error", { tone: "coral", body: msg });
-      return { success: false, error: msg };
-    }
+    const msg = "Email sign-in isn't available right now. Try the demo instead.";
+    toast("Sign in unavailable", { tone: "amber", body: msg });
+    return { success: false, error: msg };
   }
 
   async function signUpWithEmail(email: string, pass: string, name?: string): Promise<{ success: boolean; error?: string }> {
@@ -345,43 +320,15 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
           toast("Registration error", { tone: "coral", body: "Please enter a valid email address." });
           return { success: false, error: "Invalid email address." };
         }
+        const msg = errObj.message || "Could not create your account.";
+        toast("Registration error", { tone: "coral", body: msg });
+        return { success: false, error: msg };
       }
     }
 
-    // 2. Attempt Relational Database User Creation
-    try {
-      const dbRes = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail, password: pass, name: finalName }),
-      });
-      const dbData = await dbRes.json();
-      if (dbRes.ok && dbData.success) {
-        const activeUser: AuthUserProfile = {
-          uid: dbData.user.id,
-          email: dbData.user.email,
-          displayName: dbData.user.name,
-          photoURL: null,
-          isAnonymous: false,
-          provider: "password",
-        };
-        setUser(activeUser);
-        localStorage.removeItem(DEMO_USER_KEY);
-        void updateLocalProfile({ display_name: dbData.user.name });
-        toast("Account registered successfully", {
-          tone: "emerald",
-          body: "Saved to persistent database with 30D historical telemetry.",
-        });
-        return { success: true };
-      }
-
-      toast("Registration error", { tone: "coral", body: dbData.error || "Could not register account" });
-      return { success: false, error: dbData.error };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast("Registration error", { tone: "coral", body: msg });
-      return { success: false, error: msg };
-    }
+    const msg = "Sign-up isn't available right now. Try the demo instead.";
+    toast("Sign-up unavailable", { tone: "amber", body: msg });
+    return { success: false, error: msg };
   }
 
   async function signInAsGuest(name = "Ayush"): Promise<{ success: boolean; error?: string }> {

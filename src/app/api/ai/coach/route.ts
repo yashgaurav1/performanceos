@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type, type FunctionDeclaration } from "@google/genai";
-import { verifyServerAuth, checkSpendCap, recordSpend, verifyAppCheck, checkUserRateLimit } from "@/lib/ai/server-auth";
+import { guardAiRequest, recordSpend } from "@/lib/ai/server-auth";
 import { buildFourteenDaySummary, executeCoachTool } from "@/lib/ai/fourteen-day-summary";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const WRITE_TOOLS = new Set(["log_meal", "update_targets"]);
 
 interface MessageItem {
   role?: string;
@@ -15,52 +17,11 @@ interface MessageItem {
 
 export async function POST(req: Request) {
   try {
-    // 0. Verify Firebase App Check
-    const { valid: appCheckValid, errorResponse: appCheckError } = await verifyAppCheck(req);
-    if (!appCheckValid && appCheckError) {
-      return appCheckError;
-    }
-
-    // 1. Verify Firebase ID Token from Authorization header
-    const { auth, errorResponse: authError } = await verifyServerAuth(req);
-    if (authError || !auth) {
-      return (
-        authError ||
-        NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 })
-      );
-    }
-
+    // App Check, verified identity, monthly spend cap and durable rate limit.
+    const guard = await guardAiRequest(req, "coach");
+    if (guard.errorResponse) return guard.errorResponse;
+    const { auth } = guard;
     const uid = auth.uid;
-
-    // 2. Enforce per-user monthly spend cap stored on users/{uid}.aiSpendMonth
-    const capCheck = await checkSpendCap(uid);
-    if (!capCheck.allowed) {
-      return (
-        capCheck.errorResponse ||
-        NextResponse.json(
-          {
-            error: "The coach is taking a short break. Please try again later.",
-            code: "SPEND_CAP_EXCEEDED",
-          },
-          { status: 429 }
-        )
-      );
-    }
-
-    // 2.1 Enforce per-user rate limit (30/hr, 200/day)
-    const rateCheck = await checkUserRateLimit(uid, "coach");
-    if (!rateCheck.allowed) {
-      return (
-        rateCheck.errorResponse ||
-        NextResponse.json(
-          {
-            error: "The coach is taking a short break. Please try again later.",
-            code: "RATE_LIMIT_EXCEEDED",
-          },
-          { status: 429 }
-        )
-      );
-    }
 
     // 3. Read GEMINI_API_KEY and GEMINI_MODEL strictly from server env only
     const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -100,6 +61,13 @@ export async function POST(req: Request) {
         return { role, text: text.trim() };
       })
       .filter((m) => m.text.length > 0);
+
+    if (conversation.length === 0 || conversation[conversation.length - 1]?.role !== "user") {
+      return NextResponse.json(
+        { error: "Send a message for the coach to answer.", code: "INVALID_REQUEST" },
+        { status: 400 }
+      );
+    }
 
     // 4. Build 14-day telemetry summary on the server
     const telemetry = await buildFourteenDaySummary(uid, today);
@@ -237,7 +205,11 @@ CRITICAL RULES:
           // If functions were requested, execute them and feed back to Gemini
           if (pendingCalls.length > 0) {
             for (const call of pendingCalls) {
-              const toolExec = await executeCoachTool(call.name, call.args, uid, today);
+              // The demo athlete is shared and read-only: never let a guest write to it.
+              const toolExec =
+                auth.isDemo && WRITE_TOOLS.has(call.name)
+                  ? { success: false, result: "Demo mode is read-only. Sign in to save meals or change targets." }
+                  : await executeCoachTool(call.name, call.args, uid, today);
               sendEvent({ type: "tool_result", name: call.name, result: toolExec.result });
 
               // Feed tool result back to Gemini for final response
