@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
@@ -9,6 +9,50 @@ import { hydrateLocalDBFromBackend } from "@/lib/db/hydrator";
 import { Button } from "@/components/ui/button";
 import { PhoneFrame, Heading, Lead, Eyebrow, Chip } from "@/components/ui/primitives";
 import { getBlurPlaceholder } from "@/lib/blur-data";
+
+/**
+ * Shows the poster immediately and only fetches the ~600 KB video after the page
+ * has loaded, on wider screens, when the user hasn't asked to save data or reduce motion.
+ * Phones keep the static poster, so the video never competes with first paint.
+ */
+function HeroVideo() {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [play, setPlay] = useState(false);
+
+  useEffect(() => {
+    const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    const wide = window.matchMedia("(min-width: 768px)").matches;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!wide || reduced || conn?.saveData) return;
+    const start = () => setPlay(true);
+    if (document.readyState === "complete") start();
+    else window.addEventListener("load", start, { once: true });
+    return () => window.removeEventListener("load", start);
+  }, []);
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!play || !v) return;
+    v.load(); // pick up the <source> children added after mount
+    void v.play().catch(() => undefined);
+  }, [play]);
+
+  return (
+    <video
+      ref={ref}
+      muted
+      loop
+      playsInline
+      preload="none"
+      poster="/video/hero-poster.jpg"
+      aria-label="PerformanceOS scanning a plate of paneer bhurji and phulkas"
+      className="w-full h-full object-cover"
+    >
+      {play && <source src="/video/hero.webm" type="video/webm" />}
+      {play && <source src="/video/hero.mp4" type="video/mp4" />}
+    </video>
+  );
+}
 
 export function HeroSection() {
   const router = useRouter();
@@ -61,12 +105,13 @@ export function HeroSection() {
           src="/images/photos/hero-thali.jpg"
           alt=""
           fill
-          priority
+          fetchPriority="low"
           placeholder="blur"
           blurDataURL={getBlurPlaceholder("photos/hero-thali.jpg")}
           className="object-cover filter blur-[24px] opacity-25 scale-105"
-          sizes="(max-width: 768px) 100vw, 1200px"
-          quality={40}
+          // Blurred at 24px and 25% opacity: a small source is visually identical.
+          sizes="640px"
+          quality={30}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#0C0C0D]/80 via-[#0C0C0D]/95 to-[#0C0C0D]" />
       </div>
@@ -151,25 +196,7 @@ export function HeroSection() {
         <div className="lg:col-span-5 flex justify-center z-10">
           <PhoneFrame className="max-w-[280px] sm:max-w-[340px]">
             <div className="relative w-full aspect-[9/19.5] overflow-hidden rounded-[28px] bg-[#0C0C0D]">
-              <video
-                autoPlay
-                muted
-                loop
-                playsInline
-                poster="/video/hero-poster.jpg"
-                className="w-full h-full object-cover"
-              >
-                <source src="/video/hero.webm" type="video/webm" />
-                <source src="/video/hero.mp4" type="video/mp4" />
-                {/* Fallback image */}
-                <Image
-                  src="/images/screens/scan-result.png"
-                  alt="Meal scanner review in PerformanceOS"
-                  fill
-                  className="object-cover"
-                  priority
-                />
-              </video>
+              <HeroVideo />
 
               {/* Verified Meal Detection Attributes */}
               <div className="sr-only">
