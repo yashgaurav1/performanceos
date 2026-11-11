@@ -36,15 +36,6 @@ export function PomodoroPanel({ subjects }: { subjects: string[] }) {
   const stopAndLog = async () => {
     const s = await ft.stop();
     if (s) {
-      void fetch("/api/study/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: s.subject,
-          durationMinutes: Math.max(1, Math.round(s.focus_mins)),
-          mode: s.mode,
-        }),
-      }).catch(() => undefined);
       toast(`${Math.round(s.focus_mins)}m logged`, { tone: "emerald", body: `${s.subject} · ${titleCase(s.mode)}` });
     }
   };

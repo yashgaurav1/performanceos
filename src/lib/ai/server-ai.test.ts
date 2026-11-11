@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+const txStore = vi.hoisted(() => new Map<string, Record<string, unknown>>());
+
 vi.mock("@/lib/firebaseAdmin", () => {
   const mockDoc = {
     get: vi.fn().mockResolvedValue({
@@ -38,14 +40,26 @@ vi.mock("@/lib/firebaseAdmin", () => {
       }),
     }),
     getAdminFirestore: vi.fn().mockReturnValue({
-      collection: vi.fn().mockReturnValue({
-        doc: vi.fn().mockReturnValue(mockDoc),
-      }),
+      collection: vi.fn().mockImplementation((col: string) => ({
+        doc: vi.fn().mockImplementation((id: string) => ({ ...mockDoc, __id: `${col}/${id}` })),
+      })),
+      // Minimal transaction: reads/writes go to txStore keyed by "collection/doc".
+      runTransaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          get: async (ref: { __id: string }) => {
+            const d = txStore.get(ref.__id);
+            return { exists: d !== undefined, data: () => d };
+          },
+          set: (ref: { __id: string }, data: Record<string, unknown>) => {
+            txStore.set(ref.__id, { ...(txStore.get(ref.__id) ?? {}), ...data });
+          },
+        })
+      ),
     }),
   };
 });
 
-import { checkSpendCap, recordSpend, verifyServerAuth, verifyAppCheck } from "./server-auth";
+import { checkSpendCap, enforceAiRateLimit, recordSpend, verifyServerAuth, verifyAppCheck } from "./server-auth";
 import { executeCoachTool, buildFourteenDaySummary } from "./fourteen-day-summary";
 
 describe("Server-Side AI Infrastructure", () => {
@@ -54,40 +68,78 @@ describe("Server-Side AI Infrastructure", () => {
   });
 
   describe("verifyServerAuth", () => {
-    it("accepts requests with demo headers", async () => {
-      const req = new Request("http://localhost/api/ai/coach", {
-        headers: {
-          "x-demo-user": "ayush",
-        },
-      });
+    it("maps the demo header to the read-only demo athlete", async () => {
+      const req = new Request("http://localhost/api/ai/coach", { headers: { "x-demo-user": "ayush" } });
       const result = await verifyServerAuth(req);
-      expect(result.auth).not.toBeNull();
       expect(result.auth?.uid).toBe("ayush");
       expect(result.auth?.isDemo).toBe(true);
+      expect(result.auth?.isVerified).toBe(false);
       expect(result.errorResponse).toBeUndefined();
     });
 
-    it("accepts requests with valid bearer tokens", async () => {
-      const req = new Request("http://localhost/api/ai/coach", {
-        headers: {
-          Authorization: "Bearer valid-token",
-        },
-      });
+    it("accepts verified bearer tokens", async () => {
+      const req = new Request("http://localhost/api/ai/coach", { headers: { Authorization: "Bearer valid-token" } });
       const result = await verifyServerAuth(req);
-      expect(result.auth).not.toBeNull();
       expect(result.auth?.uid).toBe("test-user-id");
       expect(result.auth?.email).toBe("athlete@example.com");
+      expect(result.auth?.isVerified).toBe(true);
+      expect(result.auth?.isDemo).toBe(false);
     });
 
-    it("accepts requests with athlete uid header", async () => {
+    it("never trusts x-athlete-uid as an identity", async () => {
+      const req = new Request("http://localhost/api/ai/coach", { headers: { "x-athlete-uid": "victim-uid-123" } });
+      const result = await verifyServerAuth(req);
+      expect(result.auth?.uid).not.toBe("victim-uid-123");
+      expect(result.auth?.uid).toBe("ayush");
+      expect(result.auth?.isVerified).toBe(false);
+    });
+
+    it("does not fall back to the header uid when the token is invalid", async () => {
       const req = new Request("http://localhost/api/ai/coach", {
-        headers: {
-          "x-athlete-uid": "athlete-test-123",
-        },
+        headers: { Authorization: "Bearer forged-token", "x-athlete-uid": "victim-uid-123" },
       });
       const result = await verifyServerAuth(req);
-      expect(result.auth).not.toBeNull();
-      expect(result.auth?.uid).toBe("athlete-test-123");
+      expect(result.auth?.uid).toBe("ayush");
+      expect(result.auth?.isVerified).toBe(false);
+    });
+
+    it("rejects unauthenticated callers in production", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      try {
+        const result = await verifyServerAuth(new Request("http://localhost/api/ai/coach"));
+        expect(result.auth).toBeNull();
+        expect(result.errorResponse?.status).toBe(401);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+
+  describe("enforceAiRateLimit", () => {
+    beforeEach(() => txStore.clear());
+
+    const guestReq = (ip: string) => new Request("http://localhost/api/ai/coach", { headers: { "x-forwarded-for": ip } });
+    const guest = { uid: "ayush", isDemo: true, isVerified: false, isAnonymous: true };
+
+    it("caps each guest IP per hour", async () => {
+      let allowed = 0;
+      for (let i = 0; i < 12; i++) if ((await enforceAiRateLimit(guestReq("1.1.1.1"), guest, "coach")).allowed) allowed++;
+      expect(allowed).toBe(8);
+      const blocked = await enforceAiRateLimit(guestReq("1.1.1.1"), guest, "coach");
+      expect(blocked.errorResponse?.status).toBe(429);
+    });
+
+    it("caps all guest traffic combined, even across many IPs", async () => {
+      let allowed = 0;
+      for (let i = 0; i < 80; i++) if ((await enforceAiRateLimit(guestReq(`10.0.0.${i}`), guest, "vision")).allowed) allowed++;
+      expect(allowed).toBe(60);
+    });
+
+    it("gives signed-in users their own higher limit", async () => {
+      const user = { uid: "u1", isDemo: false, isVerified: true, isAnonymous: false };
+      let allowed = 0;
+      for (let i = 0; i < 35; i++) if ((await enforceAiRateLimit(guestReq("2.2.2.2"), user, "coach")).allowed) allowed++;
+      expect(allowed).toBe(30);
     });
   });
 

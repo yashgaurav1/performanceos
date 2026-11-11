@@ -6,7 +6,6 @@ next-env.d.ts
 .env*.local
 .env
 *.db
-!prisma/template.db
 *.db-journal
 dev.db
 .vercel

@@ -1,5 +1,10 @@
 /**
- * Production In-Memory Sliding Window Rate Limiter
+ * Best-effort, per-instance fixed-window limiter.
+ *
+ * Each serverless instance has its own Map, so this only blunts bursts. It is
+ * NOT a real limit on Vercel. AI routes use the durable Firestore limiter in
+ * src/lib/ai/server-auth.ts (enforceAiRateLimit) and fall back to this only
+ * when Firestore is unreachable.
  */
 
 interface RateLimitRecord {

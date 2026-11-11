@@ -24,20 +24,6 @@ export function ExpenseQuickAdd({ today, currency }: { today: string; currency: 
   const submit = async () => {
     if (!parsed) return toast("Add an amount, e.g. 120 lunch", { tone: "amber" });
 
-    // Persist to live backend API endpoint in real database
-    void fetch("/api/money/transaction", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: parsed.amount_minor / 100,
-        category,
-        paymentMethod: method,
-        vendorOrWhere: parsed.merchant,
-        note: parsed.note,
-        date,
-      }),
-    }).catch(() => undefined);
-
     await addExpense({ spent_on: date, amount_minor: parsed.amount_minor, category, merchant: parsed.merchant, note: parsed.note || null, payment_method: method });
     toast(`${fmtMoney(parsed.amount_minor, currency)} · ${CATEGORY_META[category].label}`, { tone: "emerald" });
     setText(""); setCat(null);
