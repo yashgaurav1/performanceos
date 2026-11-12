@@ -194,8 +194,9 @@ export function HeroSection() {
 
         {/* Right Column: Real Hero Phone / Video */}
         <div className="lg:col-span-5 flex justify-center z-10">
-          <PhoneFrame className="max-w-[280px] sm:max-w-[340px]">
-            <div className="relative w-full aspect-[9/19.5] overflow-hidden rounded-[28px] bg-[#0C0C0D]">
+          {/* Phone height follows the recording (600x1006) so the screen is always filled edge to edge. */}
+          <PhoneFrame className="max-w-[280px] sm:max-w-[340px] aspect-auto sm:aspect-auto">
+            <div className="relative w-full aspect-[600/1006] overflow-hidden rounded-[24px] bg-[#0C0C0D]">
               <HeroVideo />
 
               {/* Verified Meal Detection Attributes */}

@@ -264,7 +264,8 @@ async function run() {
     colorScheme: "dark",
     recordVideo: {
       dir: tempVideoDir,
-      size: { width: 393, height: 852 },
+      // Must equal the device viewport (393x659); a taller size pads every frame with grey.
+      size: devices["iPhone 14 Pro"].viewport,
     },
   });
 
