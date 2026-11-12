@@ -30,7 +30,7 @@ export function MobileTopBar() {
             <OfflineSyncStatusBadge compact />
             {user?.provider === "demo" && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-sans text-amber bg-amber/15 border border-amber/30">
-                Demo Read-Only
+                Demo
               </span>
             )}
           </div>

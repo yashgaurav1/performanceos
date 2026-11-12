@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Camera, PenLine } from "lucide-react";
+import { Camera, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MacroWhiskerProgressBar } from "@/components/eat/macro-whisker-bar";
 import { QuickProteinAndStaplesBar } from "@/components/eat/quick-staples-bar";
@@ -35,7 +35,7 @@ function EatInner() {
       <MacroWhiskerProgressBar totals={totals} profile={profile} />
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <Button variant="primary" size="lg" onClick={() => setScanOpen(true)}><Camera size={18} /> Scan meal photo</Button>
-        <Button size="lg" aria-label="Manual entry" onClick={() => setManual(true)}><PenLine size={18} /></Button>
+        <Button size="lg" aria-label="Search and add food" onClick={() => setManual(true)}><Search size={18} /> Search</Button>
       </div>
       <QuickProteinAndStaplesBar date={today} />
       <MealLog entries={entries} />

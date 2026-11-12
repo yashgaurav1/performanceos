@@ -26,6 +26,9 @@
   --color-mint: #3CC8C0;
   --color-cyan: #3CC8C0;
   --color-kcal: #F5F5F4;
+  /* Status: good / hit target (used as text-emerald, bg-emerald/15 …). Was missing, so those classes rendered colourless. */
+  --color-emerald: #10B981;
+  --color-purple: #A78BFA;
 
   --font-display: var(--font-satoshi), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

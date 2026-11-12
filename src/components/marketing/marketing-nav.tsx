@@ -2,14 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { PerformanceOSLogo } from "@/components/shell/brand-logo";
 import { useFirebaseAuth } from "@/lib/firebase/auth-context";
-import { hydrateLocalDBFromBackend } from "@/lib/db/hydrator";
 import { Button } from "@/components/ui/button";
 
 export function MarketingNav() {
   const { signInAsGuest } = useFirebaseAuth();
+  const router = useRouter();
   const [demoLoading, setDemoLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -26,14 +27,10 @@ export function MarketingNav() {
     if (demoLoading) return;
     setDemoLoading(true);
     try {
-      await fetch("/api/auth/demo", { method: "POST" }).catch(() => {});
-      const res = await signInAsGuest("Ayush");
-      if (res && res.success) {
-        await hydrateLocalDBFromBackend().catch(() => {});
-      }
-      window.location.href = "/today";
+      await signInAsGuest("Ayush");
+      router.push("/today");
     } catch {
-      window.location.href = "/today";
+      router.push("/today");
     } finally {
       setDemoLoading(false);
     }

@@ -3,7 +3,8 @@ import { Camera, PenLine, Trash2, Zap, Utensils } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/primitives";
 import { Pill } from "@/components/ui/pill";
-import { deleteFoodEntry } from "@/lib/db/repo";
+import { addFoodEntry, deleteFoodEntry } from "@/lib/db/repo";
+import { toast } from "@/components/ui/toast";
 import { plusMinus } from "@/lib/math/nutrition-math";
 import { titleCase } from "@/lib/format";
 import type { FoodEntry, MealSlot } from "@/types/database.types";
@@ -92,10 +93,17 @@ export function MealLog({ entries }: { entries: FoodEntry[] }) {
                         <button
                           type="button"
                           aria-label={`Delete ${e.meal_title}`}
-                          onClick={() => void deleteFoodEntry(e.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-faint transition-colors hover:bg-coral/10 hover:text-coral"
+                          onClick={async () => {
+                            const { id: _id, user_id: _u, logged_at: _l, ...restore } = e;
+                            await deleteFoodEntry(e.id);
+                            toast("Meal removed", {
+                              body: e.meal_title,
+                              action: { label: "Undo", onClick: () => void addFoodEntry({ ...restore, id: e.id }) },
+                            });
+                          }}
+                          className="-my-1.5 -mr-1.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-faint transition-colors hover:bg-coral/10 hover:text-coral"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={14} />
                         </button>
                       </li>
                     );

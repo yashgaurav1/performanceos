@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { useFirebaseAuth } from "@/lib/firebase/auth-context";
-import { hydrateLocalDBFromBackend } from "@/lib/db/hydrator";
 import { Button } from "@/components/ui/button";
 import { Card, Heading, Lead, Chip } from "@/components/ui/primitives";
 import { getBlurPlaceholder } from "@/lib/blur-data";
@@ -20,14 +19,10 @@ export function FinalCTA() {
     if (demoLoading) return;
     setDemoLoading(true);
     try {
-      await fetch("/api/auth/demo", { method: "POST" }).catch(() => {});
-      const res = await signInAsGuest("Ayush");
-      if (res.success) {
-        await hydrateLocalDBFromBackend();
-      }
-      window.location.href = "/today";
+      await signInAsGuest("Ayush");
+      router.push("/today");
     } catch {
-      window.location.href = "/today";
+      router.push("/today");
     } finally {
       setDemoLoading(false);
     }
@@ -39,7 +34,6 @@ export function FinalCTA() {
     try {
       const res = await signInWithGoogle();
       if (res.success) {
-        await hydrateLocalDBFromBackend();
         router.push("/today");
       } else {
         router.push("/login");

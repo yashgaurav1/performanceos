@@ -3,7 +3,6 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -15,6 +14,7 @@ import { getClientFirebaseConfig, type FirebaseClientConfig } from "./config";
 import { updateProfile as updateLocalProfile } from "@/lib/db/repo";
 import { syncFirestoreWithLocalDB } from "./firestore-sync";
 import { loadDemoData } from "@/lib/demo/seed";
+import { claimLocalData, DEMO_OWNER, releaseLocalData } from "@/lib/db/local-owner";
 import { toast } from "@/components/ui/toast";
 
 export interface AuthUserProfile {
@@ -60,49 +60,17 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<AuthUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Read stored database session or demo user on mount
+  // Demo sessions are purely local: render the app immediately, no network.
   useEffect(() => {
-    async function checkCurrentSession() {
-      const auth = getFirebaseAuth();
-      if (auth?.currentUser) {
-        try {
-          const idToken = await auth.currentUser.getIdToken();
-          const res = await fetch("/api/auth/me", {
-            headers: { Authorization: `Bearer ${idToken}` },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.authenticated && data.user) {
-              setUser({
-                uid: data.user.id,
-                email: data.user.email,
-                displayName: data.user.name,
-                photoURL: null,
-                isAnonymous: false,
-                provider: "password",
-              });
-              setLoading(false);
-              return;
-            }
-          }
-        } catch {
-          // network or server check
-        }
+    try {
+      const storedDemo = localStorage.getItem(DEMO_USER_KEY);
+      if (storedDemo) {
+        setUser(JSON.parse(storedDemo) as AuthUserProfile);
+        setLoading(false);
       }
-
-      try {
-        const storedDemo = localStorage.getItem(DEMO_USER_KEY);
-        if (storedDemo) {
-          const parsed = JSON.parse(storedDemo) as AuthUserProfile;
-          setUser(parsed);
-        }
-      } catch {
-        // ignore
-      }
-      setLoading(false);
+    } catch {
+      // ignore unreadable storage
     }
-
-    void checkCurrentSession();
   }, []);
 
   // Listen for custom Firebase configuration updates
@@ -123,54 +91,39 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
       return;
     }
 
+    // Fires once Firebase restores the session from IndexedDB (no server round trip),
+    // so the app shell waits only for that, never for an API call.
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setRawUser(fbUser);
-      if (fbUser) {
+      if (fbUser && !fbUser.isAnonymous) {
         const providerId = fbUser.providerData[0]?.providerId;
-        const provider =
-          fbUser.isAnonymous
-            ? "demo"
-            : providerId === "google.com"
-            ? "google"
-            : "password";
-
         const profile: AuthUserProfile = {
           uid: fbUser.uid,
           email: fbUser.email,
           displayName: fbUser.displayName || fbUser.email?.split("@")[0] || "Athlete",
           photoURL: fbUser.photoURL,
-          isAnonymous: fbUser.isAnonymous,
-          provider,
+          isAnonymous: false,
+          provider: providerId === "google.com" ? "google" : "password",
         };
-        setUser(profile);
+        // Wipe demo data (or another account's) before showing this account.
+        await claimLocalData(fbUser.uid);
         localStorage.removeItem(DEMO_USER_KEY);
+        setUser(profile);
+        setLoading(false);
 
-        // Sync session to backend cookie
-        if (fbUser.email) {
-          await fetch("/api/auth/firebase", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: fbUser.email,
-              uid: fbUser.uid,
-              displayName: profile.displayName,
-              photoURL: fbUser.photoURL,
-            }),
-          }).catch(() => undefined);
+        // Background work only: never blocks the first render.
+        const syncedKey = `cc:profile_synced:${fbUser.uid}`;
+        if (fbUser.email && sessionStorage.getItem(syncedKey) !== "1") {
+          sessionStorage.setItem(syncedKey, "1");
+          void syncFirebaseWithBackend({ email: fbUser.email, uid: fbUser.uid, displayName: profile.displayName });
         }
-
-        if (profile.displayName) {
-          void updateLocalProfile({ display_name: profile.displayName });
-        }
-
-        // Hydrate and synchronize live Cloud Firestore data
+        if (profile.displayName) void updateLocalProfile({ display_name: profile.displayName });
         void syncFirestoreWithLocalDB(fbUser.uid);
-      } else {
-        const storedDemo = localStorage.getItem(DEMO_USER_KEY);
-        if (storedDemo) {
-          setUser(JSON.parse(storedDemo) as AuthUserProfile);
-        }
+        return;
       }
+
+      const storedDemo = localStorage.getItem(DEMO_USER_KEY);
+      setUser(storedDemo ? (JSON.parse(storedDemo) as AuthUserProfile) : null);
       setLoading(false);
     });
 
@@ -331,94 +284,48 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
     return { success: false, error: msg };
   }
 
+  /**
+   * The demo is fully local: seeded IndexedDB data, no account and no server calls,
+   * so it opens instantly. Changes made in the demo stay on this device and never
+   * sync anywhere.
+   */
   async function signInAsGuest(name = "Ayush"): Promise<{ success: boolean; error?: string }> {
-    // 1. Post to demo route to initialize backend demo state
-    await fetch("/api/auth/demo", { method: "POST" }).catch(() => undefined);
-
-    const auth = getFirebaseAuth();
-    if (auth && configState.isConfigured) {
-      try {
-        const cred = await signInAnonymously(auth);
-        if (cred.user) {
-          await updateFirebaseProfile(cred.user, { displayName: name }).catch(() => undefined);
-          const activeUser: AuthUserProfile = {
-            uid: cred.user.uid,
-            email: "athlete@performance-os.local",
-            displayName: name,
-            photoURL: null,
-            isAnonymous: true,
-            provider: "demo",
-          };
-          setUser(activeUser);
-          localStorage.setItem(DEMO_USER_KEY, JSON.stringify(activeUser));
-          localStorage.setItem("cc:current_uid", cred.user.uid);
-          await loadDemoData();
-          void updateLocalProfile({ display_name: name });
-          toast(`Connected as ${name}`, {
-            tone: "emerald",
-            body: "Active 30D historical continuum loaded with verified Firebase token.",
-          });
-          return { success: true };
-        }
-      } catch (fbErr) {
-        console.warn("Notice signing in anonymously via Firebase:", fbErr);
-      }
-    }
-
     try {
-      const res = await fetch("/api/auth/demo", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        const activeUser: AuthUserProfile = {
-          uid: data.user.id,
-          email: data.user.email,
-          displayName: data.user.name,
-          photoURL: null,
-          isAnonymous: true,
-          provider: "demo",
-        };
-        setUser(activeUser);
-        localStorage.setItem(DEMO_USER_KEY, JSON.stringify(activeUser));
-        localStorage.setItem("cc:current_uid", data.user.id);
-        await loadDemoData();
-        void updateLocalProfile({ display_name: data.user.name });
-        toast(`Connected as ${data.user.name || "Ayush"}`, { tone: "emerald", body: "Active 30D historical continuum loaded from database." });
-        return { success: true };
-      }
-    } catch {
-      // fallback
+      const auth = getFirebaseAuth();
+      if (auth?.currentUser) await signOut(auth).catch(() => undefined);
+      const demoUser: AuthUserProfile = {
+        uid: DEMO_OWNER,
+        email: null,
+        displayName: name,
+        photoURL: null,
+        isAnonymous: true,
+        provider: "demo",
+      };
+      await claimLocalData(DEMO_OWNER);
+      await loadDemoData();
+      localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoUser));
+      localStorage.setItem("cc:current_uid", DEMO_OWNER);
+      void updateLocalProfile({ display_name: name });
+      setUser(demoUser);
+      setLoading(false);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not start the demo.";
+      return { success: false, error: msg };
     }
-
-    const demoUser: AuthUserProfile = {
-      uid: "guest-demo-" + Math.random().toString(36).slice(2, 9),
-      email: "athlete@performance-os.local",
-      displayName: name,
-      photoURL: null,
-      isAnonymous: true,
-      provider: "demo",
-    };
-    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoUser));
-    setUser(demoUser);
-    await loadDemoData();
-    void updateLocalProfile({ display_name: name });
-    toast(`Guest Access Activated (${name})`, { tone: "cyan" });
-    return { success: true };
   }
 
   async function logout() {
     const auth = getFirebaseAuth();
-    if (auth) {
-      try {
-        await signOut(auth);
-      } catch {
-        // ignore
-      }
-    }
+    if (auth) await signOut(auth).catch(() => undefined);
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     localStorage.removeItem(DEMO_USER_KEY);
+    localStorage.removeItem("cc:current_uid");
+    // Don't leave the previous person's meals, workouts or spending on this device.
+    await releaseLocalData().catch(() => undefined);
     setUser(null);
     setRawUser(null);
-    toast("Signed out successfully");
+    toast("Signed out");
   }
 
   return (

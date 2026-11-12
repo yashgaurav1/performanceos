@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Camera, CheckSquare, Dumbbell, Scale, Sparkles, Trophy, Wallet } from "lucide-react";
+import { BookOpen, Camera, CheckSquare, Dumbbell, Scale, Sparkles, Trophy, UtensilsCrossed, Wallet } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,15 @@ import { parseExpenseInput } from "@/lib/math/budget-math";
 import { fmtMoney, titleCase } from "@/lib/format";
 import { useProfile } from "@/lib/db/hooks";
 import type { WinTag } from "@/types/database.types";
+import { FOOD_CATALOG } from "@/data/food-catalog";
+import { parseFoodText, totalsForItems } from "@/lib/math/food-parse";
+import { logFoodItems } from "@/components/eat/log-food";
+import { defaultMealSlot } from "@/components/eat/staples";
 
-type Mode = "task" | "expense" | "win" | "weight";
+type Mode = "food" | "task" | "expense" | "win" | "weight";
 
 const PLACEHOLDER: Record<Mode, string> = {
+  food: "2 roti, 1 katori dal, 200g chicken",
   task: "Solve 30 quant questions #study !big3",
   expense: "120 chai #food @canteen",
   win: "Hit 3 pomodoros before lunch #study",
@@ -33,11 +38,18 @@ const SHORTCUTS = [
 export function OmniLogSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
   const profile = useProfile();
-  const [mode, setMode] = useState<Mode>("expense");
+  const [mode, setMode] = useState<Mode>("food");
   const [text, setText] = useState("");
 
   const preview = (() => {
     if (!text.trim()) return null;
+    if (mode === "food") {
+      const r = parseFoodText(text, FOOD_CATALOG);
+      if (!r.items.length) return r.unmatched.length ? "Not recognised yet. Try “2 roti” or “1 katori dal”." : null;
+      const t = totalsForItems(r.items);
+      const names = r.items.map((i) => `${i.food.name} ${i.grams} g`).join(" · ");
+      return `${t.kcal_point} kcal ± ${t.kcal_high - t.kcal_point} · ${t.protein_g} g P · ${names}${r.unmatched.length ? ` · skipping: ${r.unmatched.join(", ")}` : ""}`;
+    }
     if (mode === "task") {
       const p = parseTaskInput(text);
       return `${p.is_big_three ? "★ Big-3 · " : ""}#${p.domain} · ${p.title || "…"}`;
@@ -57,7 +69,11 @@ export function OmniLogSheet({ open, onOpenChange }: { open: boolean; onOpenChan
     const date = todayISO();
     const raw = text.trim();
     if (!raw) return;
-    if (mode === "task") {
+    if (mode === "food") {
+      const r = parseFoodText(raw, FOOD_CATALOG);
+      if (!r.items.length) return toast("Couldn't recognise that food", { tone: "amber", body: "Try “2 roti, 1 katori dal” or use Eat → Add food." });
+      await logFoodItems(r.items, date, defaultMealSlot());
+    } else if (mode === "task") {
       const p = parseTaskInput(raw);
       const r = await addTask({ ...p, scheduled_date: date });
       toast(r.ok ? "Task added" : "Big-3 is full · added to backlog", { tone: r.ok ? "emerald" : "amber", body: r.ok ? undefined : "Open Goals to swap it in." });
@@ -98,6 +114,7 @@ export function OmniLogSheet({ open, onOpenChange }: { open: boolean; onOpenChan
           value={mode}
           onChange={(m) => { setMode(m); setText(""); }}
           options={[
+            { value: "food", label: <span className="flex items-center gap-1"><UtensilsCrossed size={14} /> Food</span> },
             { value: "expense", label: <span className="flex items-center gap-1"><Wallet size={14} /> Spend</span> },
             { value: "task", label: <span className="flex items-center gap-1"><CheckSquare size={14} /> Task</span> },
             { value: "win", label: <span className="flex items-center gap-1"><Trophy size={14} /> Win</span> },

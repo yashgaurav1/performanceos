@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { useFirebaseAuth } from "@/lib/firebase/auth-context";
-import { hydrateLocalDBFromBackend } from "@/lib/db/hydrator";
 import { Button } from "@/components/ui/button";
 import { PhoneFrame, Heading, Lead, Eyebrow, Chip } from "@/components/ui/primitives";
 import { getBlurPlaceholder } from "@/lib/blur-data";
@@ -66,12 +65,9 @@ export function HeroSection() {
     setDemoLoading(true);
     setDemoError(null);
     try {
-      await fetch("/api/auth/demo", { method: "POST" }).catch(() => {});
       const res = await signInAsGuest("Ayush");
-      if (res && res.success) {
-        await hydrateLocalDBFromBackend().catch(() => {});
-      }
-      window.location.href = "/today";
+      if (!res.success) throw new Error(res.error);
+      router.push("/today");
     } catch (err: unknown) {
       console.error("Demo start error:", err);
       setDemoError("Unable to initialize demo. Please tap to retry.");
@@ -85,7 +81,6 @@ export function HeroSection() {
     try {
       const res = await signInWithGoogle();
       if (res.success) {
-        await hydrateLocalDBFromBackend();
         router.push("/today");
       } else {
         router.push("/login");

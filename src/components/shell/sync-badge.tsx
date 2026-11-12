@@ -2,6 +2,7 @@
 import { Cloud, CloudOff, HardDrive } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
+import { useFirebaseAuth } from "@/lib/firebase/auth-context";
 
 function useOnline() {
   return useSyncExternalStore(
@@ -27,12 +28,19 @@ export function OfflineSyncStatusBadge({
   compact?: boolean;
 }) {
   const online = useOnline();
+  const { user } = useFirebaseAuth();
+  const isDemo = user?.provider === "demo";
 
   let tone: "emerald" | "amber" = "emerald";
   let label: string;
   let Icon = HardDrive;
 
-  if (!online) {
+  if (isDemo) {
+    // Demo data never leaves this device: don't claim it is synced.
+    tone = "amber";
+    Icon = HardDrive;
+    label = compact ? "On device" : "Demo · saved on this device";
+  } else if (!online) {
     tone = "amber";
     Icon = CloudOff;
     label = compact ? "Offline" : "Offline · Local cache active";

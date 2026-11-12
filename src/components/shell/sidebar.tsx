@@ -101,7 +101,7 @@ export function DesktopSidebar({ onOmni }: { onOmni: () => void }) {
               </div>
               <div className="num text-[10px] text-faint truncate capitalize flex items-center gap-1.5">
                 {user.provider === "demo" ? (
-                  <span className="text-amber font-semibold">Demo · Read-Only</span>
+                  <span className="text-amber font-semibold">Demo · saved on this device</span>
                 ) : (
                   <span>Signed in</span>
                 )}
