@@ -18,7 +18,6 @@ import { Input, Label } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { PerformanceOSLogo } from "@/components/shell/brand-logo";
 import { useFirebaseAuth } from "@/lib/firebase/auth-context";
-import { hydrateLocalDBFromBackend } from "@/lib/db/hydrator";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,10 +39,8 @@ export default function LoginPage() {
   async function handleFastAthleteLogin() {
     setBusy(true);
     try {
-      await fetch("/api/auth/demo", { method: "POST" }).catch(() => {});
       const res = await signInAsGuest("Ayush");
       if (res.success) {
-        await hydrateLocalDBFromBackend();
         router.replace("/today");
       }
     } finally {
@@ -56,7 +53,6 @@ export default function LoginPage() {
     try {
       const res = await signInWithGoogle();
       if (res.success) {
-        await hydrateLocalDBFromBackend();
         router.push("/today");
       }
     } finally {
@@ -72,13 +68,11 @@ export default function LoginPage() {
       if (mode === "signup") {
         const res = await signUpWithEmail(email, password, displayName);
         if (res.success) {
-          await hydrateLocalDBFromBackend();
           router.push("/today");
         }
       } else {
         const res = await signInWithEmail(email, password);
         if (res.success) {
-          await hydrateLocalDBFromBackend();
           router.push("/today");
         }
       }

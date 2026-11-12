@@ -4,6 +4,7 @@ import { getDB, PROFILE_KEY } from "@/lib/db/dexie";
 import { isDemoMode } from "@/lib/db/firestore-client";
 import { loadDemoData } from "./seed";
 import { addFoodEntry, addTask } from "@/lib/db/repo";
+import { setDoc } from "firebase/firestore";
 
 vi.mock("@/components/ui/toast", () => ({
   toast: vi.fn(),
@@ -13,6 +14,8 @@ vi.mock("firebase/firestore", async (importOriginal) => {
   const actual = await importOriginal<typeof import("firebase/firestore")>();
   return {
     ...actual,
+    setDoc: vi.fn().mockResolvedValue(undefined),
+    deleteDoc: vi.fn().mockResolvedValue(undefined),
     writeBatch: vi.fn(() => ({
       set: vi.fn(),
       commit: vi.fn().mockResolvedValue(undefined),
@@ -99,7 +102,7 @@ describe("Demo Mode & 30-Day Continuum Seeding", () => {
     expect(isDemoMode()).toBe(true);
   });
 
-  it("blocks mutations and keeps data read-only when in demo mode", async () => {
+  it("saves demo writes on the device but never sends them to Firestore", async () => {
     await loadDemoData();
     const db = getDB();
     mockLocalStorage.setItem("cc:current_uid", "ayush");
@@ -123,7 +126,7 @@ describe("Demo Mode & 30-Day Continuum Seeding", () => {
       items_breakdown: [],
     });
     const foodCountAfter = await db.foodEntries.count();
-    expect(foodCountAfter).toBe(foodCountBefore);
+    expect(foodCountAfter).toBe(foodCountBefore + 1);
 
     const taskCountBefore = await db.goalsTasks.count();
     await addTask({
@@ -131,6 +134,9 @@ describe("Demo Mode & 30-Day Continuum Seeding", () => {
       domain: "career",
     });
     const taskCountAfter = await db.goalsTasks.count();
-    expect(taskCountAfter).toBe(taskCountBefore);
+    expect(taskCountAfter).toBe(taskCountBefore + 1);
+
+    // The shared demo athlete is never written to the cloud.
+    expect(vi.mocked(setDoc)).not.toHaveBeenCalled();
   });
 });

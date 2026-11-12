@@ -29,7 +29,11 @@ honest numbers, trend-first charts.
 * **Data:** **Dexie (IndexedDB) is the client source of truth.** Writes go through `src/lib/db/repo.ts` → Dexie,
   and are mirrored to **Cloud Firestore** at `users/{uid}/...` by the Firebase client SDK
   (`src/lib/firebase/firestore-sync.ts`). Firestore rules (`firestore.rules`) lock every path to its owner.
-* **Auth:** Firebase Auth only (Google, email/password, anonymous for the demo). There is no other login system.
+* **Auth:** Firebase Auth only (Google, email/password). There is no other login system.
+* **Demo:** fully local. `signInAsGuest` seeds IndexedDB from `src/lib/demo/` with no server calls. Demo writes
+  save to Dexie so every flow works, and `firestore-sync.ts` refuses to upload them. `src/lib/db/local-owner.ts`
+  wipes local data when the owner changes (demo → account, account → account, sign-out).
+* **App shell** waits only for Firebase to restore the session from IndexedDB, never for an API call.
 * **Server:** Firebase Admin (`src/lib/firebaseAdmin.ts`) is used only by API routes for AI, account sync and account deletion.
 * **AI:** Gemini via `@google/genai` and the Vercel AI SDK (`ai`, `@ai-sdk/google` | `@ai-sdk/openai`). zod v4 at every boundary.
 * **PWA:** Serwist (`src/app/sw.ts`). **Tests:** Vitest (unit), Playwright (`tests/e2e.spec.ts`).
@@ -44,7 +48,7 @@ Not used, do not reintroduce: Prisma/SQLite, Supabase, custom password auth, ser
 | `ai/vision/meal` | Photo → meal estimate with kcal range. |
 | `ai/weekly-review` | Weekly review from client-built telemetry. |
 | `auth/firebase` | Upsert `users/{uid}` profile after sign-in (uid from verified token). |
-| `auth/me`, `auth/demo`, `auth/logout` | Session helpers. |
+| `auth/me`, `auth/logout` | Session helpers. |
 | `user/delete-account` | Deletes `users/{uid}` recursively, meal photos, `ai_usage/{uid}` and the Auth user. |
 | `health`, `backend/status` | Ops / developer drawer. |
 

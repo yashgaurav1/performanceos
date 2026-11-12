@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET as healthGET } from "@/app/api/health/route";
 import { GET as authMeGET } from "@/app/api/auth/me/route";
-import { POST as authDemoPOST } from "@/app/api/auth/demo/route";
 import { getAdminApp, getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin";
 
 describe("Health Check and Auth Routes Reliability", () => {
@@ -67,13 +66,4 @@ describe("Health Check and Auth Routes Reliability", () => {
     expect(data.user).toBeNull();
   });
 
-  it("POST /api/auth/demo returns 200 JSON with demo profile metadata without cookies", async () => {
-    const res = await authDemoPOST();
-    expect(res.status).toBe(200);
-
-    const data = await res.json();
-    expect(data.success).toBe(true);
-    expect(data.user.name).toBe("Ayush");
-    expect(data.message).toContain("Demo mode activated");
-  });
 });

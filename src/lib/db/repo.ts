@@ -53,14 +53,24 @@ export function emptyDailyLog(date: string): DailyLog {
   };
 }
 
-/** Guard helper: intercepts writes during read-only demo mode and displays athlete notification */
+/**
+ * Demo writes are real but local: they land in IndexedDB so every logging flow
+ * works, and the Firestore layer (firestore-sync.ts) refuses to upload demo data.
+ * Shows a one-time note per session; never blocks the write.
+ */
 function notifyDemoReadOnly(): boolean {
   if (typeof window !== "undefined" && isDemoMode()) {
-    toast("Demo mode is read-only", {
-      tone: "amber",
-      body: "Sign in with Google or Email to save personal entries and track your progress.",
-    });
-    return true;
+    try {
+      if (sessionStorage.getItem("cc:demo_write_note") !== "1") {
+        sessionStorage.setItem("cc:demo_write_note", "1");
+        setTimeout(
+          () => toast("Demo: saved on this device only", { tone: "neutral", body: "Sign in to keep your own log and sync it." }),
+          1600
+        );
+      }
+    } catch {
+      // storage unavailable: skip the note
+    }
   }
   return false;
 }
