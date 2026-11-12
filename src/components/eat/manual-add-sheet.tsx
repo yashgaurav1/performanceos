@@ -199,7 +199,7 @@ function ItemRow({ item }: { item: ParsedFoodItem }) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-fg">{item.food.name}</div>
         <div className="num text-xs text-muted">
-          {item.amount} · {item.grams} g
+          {/g$/.test(item.amount) ? item.amount : `${item.amount} · ${item.grams} g`}
         </div>
       </div>
       <div className="num text-right text-xs">
@@ -253,7 +253,7 @@ function PortionPicker({
               i === servingIdx ? "border-flame/50 bg-flame/10 text-fg" : "border-line text-muted hover:text-fg"
             )}
           >
-            {s.label} <span className="opacity-60">· {s.grams} g</span>
+            {s.label}{!/g$/.test(s.label) && <span className="opacity-60"> · {s.grams} g</span>}
           </button>
         ))}
       </div>
