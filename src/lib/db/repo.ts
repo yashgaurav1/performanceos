@@ -14,8 +14,6 @@ import type {
 } from "@/types/database.types";
 import { getDB, LOCAL_USER_ID, PROFILE_KEY, TABLE_MAP, type Local } from "./dexie";
 import { enqueue, scheduleFlush } from "./sync";
-import { isDemoMode } from "./firestore-client";
-import { toast } from "@/components/ui/toast";
 import {
   saveDailyLogToFirestore,
   saveProfileToFirestore,
@@ -51,28 +49,6 @@ export function emptyDailyLog(date: string): DailyLog {
     mood_score: null, energy_score: null, body_weight_kg: null, wins_list: [], friction_note: null, day_score: 0, score_breakdown: {},
     client_updated_at: nowISO(),
   };
-}
-
-/**
- * Demo writes are real but local: they land in IndexedDB so every logging flow
- * works, and the Firestore layer (firestore-sync.ts) refuses to upload demo data.
- * Shows a one-time note per session; never blocks the write.
- */
-function notifyDemoReadOnly(): boolean {
-  if (typeof window !== "undefined" && isDemoMode()) {
-    try {
-      if (sessionStorage.getItem("cc:demo_write_note") !== "1") {
-        sessionStorage.setItem("cc:demo_write_note", "1");
-        setTimeout(
-          () => toast("Demo: saved on this device only", { tone: "neutral", body: "Sign in to keep your own log and sync it." }),
-          1600
-        );
-      }
-    } catch {
-      // storage unavailable: skip the note
-    }
-  }
-  return false;
 }
 
 const ALL_TABLES = () => {
@@ -140,10 +116,6 @@ export async function recomputeDayScore(date: string): Promise<DailyLog> {
 /* ------------------------------- Daily log ------------------------------- */
 
 export async function patchDailyLog(date: string, patch: Partial<Omit<DailyLog, "id" | "log_date" | "user_id">>) {
-  if (notifyDemoReadOnly()) {
-    const existing = (await getDB().dailyLogs.where("log_date").equals(date).first()) ?? emptyDailyLog(date);
-    return existing;
-  }
   const db = getDB();
   await db.transaction("rw", db.dailyLogs, db.syncQueue, async () => {
     const log = (await db.dailyLogs.where("log_date").equals(date).first()) ?? emptyDailyLog(date);
@@ -160,17 +132,12 @@ export async function patchDailyLog(date: string, patch: Partial<Omit<DailyLog, 
 }
 
 export async function addWin(date: string, text: string, tag: Win["tag"]) {
-  if (notifyDemoReadOnly()) {
-    const existing = (await getDB().dailyLogs.where("log_date").equals(date).first()) ?? emptyDailyLog(date);
-    return existing;
-  }
   const db = getDB();
   const log = (await db.dailyLogs.where("log_date").equals(date).first()) ?? emptyDailyLog(date);
   return patchDailyLog(date, { wins_list: [...log.wins_list, { id: uuid(), text: text.trim(), tag }] });
 }
 
 export async function removeWin(date: string, winId: string) {
-  if (notifyDemoReadOnly()) return;
   const log = await getDB().dailyLogs.where("log_date").equals(date).first();
   if (!log) return;
   return patchDailyLog(date, { wins_list: log.wins_list.filter((w) => w.id !== winId) });
@@ -179,9 +146,6 @@ export async function removeWin(date: string, winId: string) {
 /* -------------------------------- Profile -------------------------------- */
 
 export async function updateProfile(patch: Partial<Omit<Profile, "id">>) {
-  if (notifyDemoReadOnly()) {
-    return getProfile();
-  }
   const db = getDB();
   await db.transaction("rw", db.profile, db.syncQueue, async () => {
     const cur = await getProfile();
@@ -202,9 +166,6 @@ export async function updateProfile(patch: Partial<Omit<Profile, "id">>) {
 export type NewFoodEntry = Omit<FoodEntry, "id" | "user_id" | "logged_at"> & { id?: string };
 
 export async function addFoodEntry(entry: NewFoodEntry) {
-  if (notifyDemoReadOnly()) {
-    return { ...entry, id: entry.id ?? uuid(), user_id: LOCAL_USER_ID, logged_at: nowISO() };
-  }
   const db = getDB();
   const rec: FoodEntry = { ...entry, id: entry.id ?? uuid(), user_id: LOCAL_USER_ID, logged_at: nowISO() };
   await db.transaction("rw", db.foodEntries, db.syncQueue, () => putAndQueue("food_entries", rec));
@@ -219,7 +180,6 @@ export async function addFoodEntry(entry: NewFoodEntry) {
 }
 
 export async function deleteFoodEntry(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const e = await db.foodEntries.get(id);
   if (!e) return;
@@ -235,21 +195,6 @@ export async function deleteFoodEntry(id: string) {
 /* -------------------------------- Training ------------------------------- */
 
 export async function startWorkout(split_name: string, date = todayISO()): Promise<Workout> {
-  if (notifyDemoReadOnly()) {
-    return {
-      id: uuid(),
-      user_id: LOCAL_USER_ID,
-      log_date: date,
-      split_name,
-      started_at: nowISO(),
-      ended_at: null,
-      session_rpe: null,
-      notes: null,
-      total_volume_kg: 0,
-      pr_count: 0,
-      client_updated_at: nowISO(),
-    };
-  }
   const db = getDB();
   const w: Workout = {
     id: uuid(), user_id: LOCAL_USER_ID, log_date: date, split_name, started_at: nowISO(), ended_at: null, session_rpe: null,
@@ -284,21 +229,6 @@ export interface LogSetResult {
 }
 
 export async function logSet(input: LogSetInput): Promise<LogSetResult> {
-  if (notifyDemoReadOnly()) {
-    return {
-      set: {
-        ...input,
-        id: input.id ?? uuid(),
-        user_id: LOCAL_USER_ID,
-        est_1rm: calculateEst1RM(input.weight_kg, input.reps, input.rir),
-        is_1rm_pr: false,
-        is_volume_pr: false,
-        completed_at: nowISO(),
-      },
-      previousBest1RM: 0,
-      newPR: false,
-    };
-  }
   const db = getDB();
   const id = input.id ?? uuid();
   const result = await db.transaction("rw", db.workoutSets, db.workouts, db.syncQueue, async () => {
@@ -347,7 +277,6 @@ async function refreshWorkoutTotals(workoutId: string) {
 }
 
 export async function deleteSet(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const s = await db.workoutSets.get(id);
   if (!s) return;
@@ -365,7 +294,6 @@ export async function deleteSet(id: string) {
 }
 
 export async function finishWorkout(id: string, session_rpe: number | null, notes: string | null) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   let updatedWorkout: Workout | null = null;
   await db.transaction("rw", db.workouts, db.syncQueue, async () => {
@@ -384,7 +312,6 @@ export async function finishWorkout(id: string, session_rpe: number | null, note
 }
 
 export async function discardWorkout(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const w = await db.workouts.get(id);
   await db.transaction("rw", db.workouts, db.workoutSets, db.syncQueue, async () => {
@@ -416,9 +343,6 @@ export type AddTaskResult = { ok: true; task: GoalTask } | { ok: false; reason: 
 /** Adds a task. If the Big-3 is full, the task is saved un-pinned and the caller opens the swap drawer. */
 export async function addTask(fields: Parameters<typeof newTask>[0]): Promise<AddTaskResult> {
   const task = newTask(fields);
-  if (notifyDemoReadOnly()) {
-    return { ok: true, task };
-  }
   const db = getDB();
   let full = false;
   await db.transaction("rw", db.goalsTasks, db.syncQueue, async () => {
@@ -442,7 +366,6 @@ export async function addTask(fields: Parameters<typeof newTask>[0]): Promise<Ad
 }
 
 async function patchTask(id: string, patch: Partial<GoalTask>) {
-  if (notifyDemoReadOnly()) return null;
   const db = getDB();
   const t = await db.goalsTasks.get(id);
   if (!t) return null;
@@ -459,7 +382,6 @@ async function patchTask(id: string, patch: Partial<GoalTask>) {
 }
 
 export async function setTaskStatus(id: string, status: TaskStatus, bumpParentGoal = true) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const res = await db.transaction("rw", db.goalsTasks, db.syncQueue, async () => {
     const r = await patchTask(id, { status, completed_at: status === "done" ? nowISO() : null });
@@ -475,7 +397,6 @@ export async function setTaskStatus(id: string, status: TaskStatus, bumpParentGo
 }
 
 export async function pinBigThree(id: string, pinned: boolean): Promise<boolean> {
-  if (notifyDemoReadOnly()) return false;
   const db = getDB();
   const t = await db.goalsTasks.get(id);
   if (!t) return false;
@@ -491,7 +412,6 @@ export async function pinBigThree(id: string, pinned: boolean): Promise<boolean>
 
 /** Swap drawer: unpin replaceId and pin newId atomically. */
 export async function swapBigThree(newId: string, replaceId: string, date: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   await db.transaction("rw", db.goalsTasks, db.syncQueue, async () => {
     await patchTask(replaceId, { is_big_three: false });
@@ -501,7 +421,6 @@ export async function swapBigThree(newId: string, replaceId: string, date: strin
 }
 
 export async function rollTaskTo(id: string, date: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const t = await db.goalsTasks.get(id);
   if (!t) return;
@@ -512,7 +431,6 @@ export async function rollTaskTo(id: string, date: string) {
 }
 
 export async function dropTask(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const t = await db.goalsTasks.get(id);
   await db.transaction("rw", db.goalsTasks, db.syncQueue, () => patchTask(id, { status: "dropped", is_big_three: false }));
@@ -520,7 +438,6 @@ export async function dropTask(id: string) {
 }
 
 export async function deleteTask(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const t = await db.goalsTasks.get(id);
   await db.transaction("rw", db.goalsTasks, db.syncQueue, () => removeAndQueue("goals_tasks", id));
@@ -538,7 +455,6 @@ export async function addGoal(fields: { title: string; domain: Domain; start: nu
     start_metric_num: fields.start, current_metric_num: fields.start, target_metric_num: fields.target, metric_unit: fields.unit,
     due_date: fields.due_date,
   };
-  if (notifyDemoReadOnly()) return goal;
   const db = getDB();
   await db.transaction("rw", db.goalsTasks, db.syncQueue, () => putAndQueue("goals_tasks", goal));
   scheduleFlush();
@@ -552,7 +468,6 @@ export async function addGoal(fields: { title: string; domain: Domain; start: nu
 }
 
 export async function adjustGoalMetric(id: string, delta: number) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   await db.transaction("rw", db.goalsTasks, db.syncQueue, async () => {
     const g = await db.goalsTasks.get(id);
@@ -587,7 +502,6 @@ export async function addStudySession(s: NewStudySession) {
     pomodoros: s.pomodoros ?? 0, interruptions: s.interruptions ?? 0, focus_rating: s.focus_rating ?? null, note: s.note ?? null,
     client_updated_at: nowISO(),
   };
-  if (notifyDemoReadOnly()) return rec;
   const db = getDB();
   await db.transaction("rw", db.studySessions, db.syncQueue, () => putAndQueue("study_sessions", rec));
   await recomputeDayScore(rec.log_date);
@@ -601,7 +515,6 @@ export async function addStudySession(s: NewStudySession) {
 }
 
 export async function rateStudySession(id: string, focus_rating: number) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   let updatedSession: StudySession | null = null;
   await db.transaction("rw", db.studySessions, db.syncQueue, async () => {
@@ -620,7 +533,6 @@ export async function rateStudySession(id: string, focus_rating: number) {
 }
 
 export async function deleteStudySession(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   const s = await db.studySessions.get(id);
   await db.transaction("rw", db.studySessions, db.syncQueue, () => removeAndQueue("study_sessions", id));
@@ -651,7 +563,6 @@ export async function addExpense(e: NewExpense) {
     category: e.category, merchant: e.merchant ?? null, note: e.note ?? null, payment_method: e.payment_method ?? "upi",
     is_recurring: e.is_recurring ?? false, client_updated_at: nowISO(),
   };
-  if (notifyDemoReadOnly()) return rec;
   const db = getDB();
   await db.transaction("rw", db.expenses, db.syncQueue, () => putAndQueue("expenses", rec));
   scheduleFlush();
@@ -665,7 +576,6 @@ export async function addExpense(e: NewExpense) {
 }
 
 export async function deleteExpense(id: string) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   await db.transaction("rw", db.expenses, db.syncQueue, () => removeAndQueue("expenses", id));
   scheduleFlush();
@@ -677,7 +587,6 @@ export async function deleteExpense(id: string) {
 }
 
 export async function setCategoryBudget(category: ExpenseCategory, monthly_limit_minor: number | null) {
-  if (notifyDemoReadOnly()) return;
   const db = getDB();
   await db.transaction("rw", db.budgetCategories, db.syncQueue, async () => {
     const existing = await db.budgetCategories.where("category").equals(category).first();

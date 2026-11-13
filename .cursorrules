@@ -30,9 +30,17 @@ honest numbers, trend-first charts.
   and are mirrored to **Cloud Firestore** at `users/{uid}/...` by the Firebase client SDK
   (`src/lib/firebase/firestore-sync.ts`). Firestore rules (`firestore.rules`) lock every path to its owner.
 * **Auth:** Firebase Auth only (Google, email/password). There is no other login system.
-* **Demo:** fully local. `signInAsGuest` seeds IndexedDB from `src/lib/demo/` with no server calls. Demo writes
-  save to Dexie so every flow works, and `firestore-sync.ts` refuses to upload them. `src/lib/db/local-owner.ts`
-  wipes local data when the owner changes (demo → account, account → account, sign-out).
+* **No demo / guest mode.** Every user signs in. `src/lib/demo/` is a local-development seeding tool only
+  (developer drawer, dev builds); it never uploads anything. `src/lib/db/local-owner.ts` wipes local data when
+  the signed-in account changes and on sign-out. Firestore writes are skipped when nobody is signed in.
+* **Google sign-in & email links** are served from our own domain: `next.config.ts` proxies `/__/auth/*` to
+  `<project>.firebaseapp.com` and serves `/__/firebase/init.json` from `/api/firebase-init`. On hosts listed in
+  `NEXT_PUBLIC_AUTH_SELF_HOSTED_HOSTS` (default `osperformance.vercel.app`) the auth domain is the site itself.
+  Phones and installed apps use redirect sign-in; desktop uses a popup. Password reset links open `/auth/action`.
+* **Assistant** (`src/components/assistant/`): the `+` button. Clear commands are parsed on-device by
+  `src/lib/math/assistant-intents.ts` and run by `run-action.ts` (works offline). Everything else goes to
+  `/api/ai/coach`, which streams `{ type: "action" }` events the client validates (`src/lib/ai/assistant-actions.ts`)
+  and runs through the same executor. The server never writes user data.
 * **App shell** waits only for Firebase to restore the session from IndexedDB, never for an API call.
 * **Server:** Firebase Admin (`src/lib/firebaseAdmin.ts`) is used only by API routes for AI, account sync and account deletion.
 * **AI:** Gemini via `@google/genai` and the Vercel AI SDK (`ai`, `@ai-sdk/google` | `@ai-sdk/openai`). zod v4 at every boundary.
@@ -44,18 +52,19 @@ Not used, do not reintroduce: Prisma/SQLite, Supabase, custom password auth, ser
 ## 4. API routes (`src/app/api`)
 | Route | Purpose |
 |---|---|
-| `ai/coach` | Coach chat (streams). Tools may write only for verified, non-demo users. |
+| `ai/coach` | Assistant/coach chat (streams). Actions are executed by the client; the server only reads. |
 | `ai/vision/meal` | Photo → meal estimate with kcal range. |
 | `ai/weekly-review` | Weekly review from client-built telemetry. |
 | `auth/firebase` | Upsert `users/{uid}` profile after sign-in (uid from verified token). |
 | `auth/me`, `auth/logout` | Session helpers. |
+| `firebase-init` | Firebase web config for the self-hosted sign-in helper (`/__/firebase/init.json`). |
 | `user/delete-account` | Deletes `users/{uid}` recursively, meal photos, `ai_usage/{uid}` and the Auth user. |
 | `health`, `backend/status` | Ops / developer drawer. |
 
 ## 5. Non-negotiable rules
 1. **Identity comes only from a verified Firebase ID token.** Use `verifyServerAuth` / `guardAiRequest`
-   (`src/lib/ai/server-auth.ts`). Never trust a uid from a header or body. Callers without a token are the
-   shared **read-only** demo athlete (`DEMO_UID = "ayush"`); never write to it.
+   (`src/lib/ai/server-auth.ts`). Never trust a uid from a header or body. In production, callers without a
+   valid token get 401.
 2. **Every AI route calls `guardAiRequest(req, endpoint)` before the model**: App Check → identity →
    monthly spend cap (`ai_usage/{uid}`, server-only) → durable Firestore rate limit (`rate_limits/*`).
    Record cost with `recordSpend`. The in-memory limiter in `src/lib/rate-limiter.ts` is a burst guard only.

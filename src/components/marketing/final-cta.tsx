@@ -1,49 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { useFirebaseAuth } from "@/lib/firebase/auth-context";
 import { Button } from "@/components/ui/button";
+import { InstallAppButton } from "@/components/pwa/install-app";
 import { Card, Heading, Lead, Chip } from "@/components/ui/primitives";
 import { getBlurPlaceholder } from "@/lib/blur-data";
 
 export function FinalCTA() {
   const router = useRouter();
-  const { signInAsGuest, signInWithGoogle } = useFirebaseAuth();
-  const [demoLoading, setDemoLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  async function handleLiveDemo() {
-    if (demoLoading) return;
-    setDemoLoading(true);
-    try {
-      await signInAsGuest("Ayush");
-      router.push("/today");
-    } catch {
-      router.push("/today");
-    } finally {
-      setDemoLoading(false);
-    }
-  }
-
-  async function handleGoogleLogin() {
-    if (googleLoading) return;
-    setGoogleLoading(true);
-    try {
-      const res = await signInWithGoogle();
-      if (res.success) {
-        router.push("/today");
-      } else {
-        router.push("/login");
-      }
-    } catch {
-      router.push("/login");
-    } finally {
-      setGoogleLoading(false);
-    }
-  }
+  const { user } = useFirebaseAuth();
 
   return (
     <section className="py-6 sm:py-24 px-4 sm:px-6 lg:px-8 max-w-[1200px] mx-auto">
@@ -55,7 +24,7 @@ export function FinalCTA() {
               See it with your own numbers.
             </Heading>
             <Lead className="mb-3.5 sm:mb-8 mx-auto lg:mx-0">
-              Explore a fully loaded demo in seconds, or sign in and start logging today.
+              Create a free account in seconds and start logging today. Your data stays private to you.
             </Lead>
 
             {/* Action Buttons */}
@@ -63,30 +32,20 @@ export function FinalCTA() {
               <Button
                 variant="primary"
                 size="lg"
-                onClick={handleLiveDemo}
-                disabled={demoLoading}
+                onClick={() => router.push(user ? "/today" : "/login?mode=signup")}
                 className="w-full sm:w-auto"
               >
-                {demoLoading ? <span>Loading demo...</span> : <span>Try the live demo</span>}
+                <span>{user ? "Open PerformanceOS" : "Get started free"}</span>
                 <ArrowRight className="w-4 h-4" />
               </Button>
-
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={handleGoogleLogin}
-                disabled={googleLoading}
-                className="w-full sm:w-auto"
-              >
-                Continue with Google
-              </Button>
+              <InstallAppButton variant="secondary" className="h-12 w-full rounded-2xl sm:w-auto" label="Install the app" />
             </div>
 
             {/* Value Chips */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-1 sm:gap-2">
               <Chip>
                 <CheckCircle2 className="w-3.5 h-3.5 text-[#3CC8C0]" />
-                <span>No sign-up for the demo</span>
+                <span>Free to use</span>
               </Chip>
               <Chip>
                 <CheckCircle2 className="w-3.5 h-3.5 text-[#3CC8C0]" />

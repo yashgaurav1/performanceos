@@ -94,17 +94,15 @@ export const DEMO_UID = "ayush";
 /**
  * Resolves who is calling.
  *
- * Only a verified Firebase ID token establishes a real identity. Client-supplied
- * headers such as `x-athlete-uid` are never trusted as a uid: without a valid
- * token the caller becomes the read-only demo athlete (when demo is requested
- * or in local dev) or is rejected.
+ * Only a verified Firebase ID token establishes an identity. Client-supplied
+ * headers are never trusted as a uid. In production, callers without a valid
+ * token are rejected.
  */
 export async function verifyServerAuth(req: Request): Promise<{
   auth: ServerAuthResult | null;
   errorResponse?: Response;
 }> {
   const authHeader = req.headers.get("authorization");
-  const wantsDemo = Boolean(req.headers.get("x-demo-user") || req.headers.get("x-athlete-uid"));
 
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (token) {
@@ -122,7 +120,8 @@ export async function verifyServerAuth(req: Request): Promise<{
     }
   }
 
-  if (wantsDemo || (!token && process.env.NODE_ENV !== "production")) {
+  // Local development without Firebase Admin: act as a read-only sample user.
+  if (!token && process.env.NODE_ENV !== "production") {
     return { auth: { uid: DEMO_UID, isDemo: true, isVerified: false, isAnonymous: true } };
   }
 

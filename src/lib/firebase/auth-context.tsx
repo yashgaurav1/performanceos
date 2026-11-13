@@ -2,9 +2,12 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   createUserWithEmailAndPassword,
+  getRedirectResult,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   updateProfile as updateFirebaseProfile,
   type User as FirebaseUser,
@@ -13,8 +16,7 @@ import { getFirebaseAuth, getGoogleProvider, resetFirebaseClient } from "./clien
 import { getClientFirebaseConfig, type FirebaseClientConfig } from "./config";
 import { updateProfile as updateLocalProfile } from "@/lib/db/repo";
 import { syncFirestoreWithLocalDB } from "./firestore-sync";
-import { loadDemoData } from "@/lib/demo/seed";
-import { claimLocalData, DEMO_OWNER, releaseLocalData } from "@/lib/db/local-owner";
+import { claimLocalData, releaseLocalData } from "@/lib/db/local-owner";
 import { toast } from "@/components/ui/toast";
 
 export interface AuthUserProfile {
@@ -23,7 +25,14 @@ export interface AuthUserProfile {
   displayName: string | null;
   photoURL: string | null;
   isAnonymous: boolean;
-  provider: "google" | "password" | "anonymous" | "demo";
+  provider: "google" | "password";
+}
+
+export interface AuthResult {
+  success: boolean;
+  error?: string;
+  /** True when the browser is navigating away (Google redirect sign-in). */
+  redirecting?: boolean;
 }
 
 interface AuthContextType {
@@ -32,12 +41,14 @@ interface AuthContextType {
   loading: boolean;
   isConfigured: boolean;
   projectConfig: FirebaseClientConfig;
-  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
-  signInWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  signUpWithEmail: (email: string, pass: string, name?: string) => Promise<{ success: boolean; error?: string }>;
-  signInAsGuest: (name?: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<AuthResult>;
+  signInWithEmail: (email: string, pass: string) => Promise<AuthResult>;
+  signUpWithEmail: (email: string, pass: string, name?: string) => Promise<AuthResult>;
+  resetPassword: (email: string) => Promise<AuthResult>;
   logout: () => Promise<void>;
 }
+
+const notConfigured = async (): Promise<AuthResult> => ({ success: false, error: "Sign-in isn't configured." });
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -45,14 +56,81 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isConfigured: false,
   projectConfig: { apiKey: "", authDomain: "", projectId: "", appId: "" },
-  signInWithGoogle: async () => ({ success: false }),
-  signInWithEmail: async () => ({ success: false }),
-  signUpWithEmail: async () => ({ success: false }),
-  signInAsGuest: async () => ({ success: false }),
+  signInWithGoogle: notConfigured,
+  signInWithEmail: notConfigured,
+  signUpWithEmail: notConfigured,
+  resetPassword: notConfigured,
   logout: async () => {},
 });
 
-const DEMO_USER_KEY = "cc:demo_auth_user";
+/** Plain-language messages for Firebase Auth error codes. */
+export function authErrorMessage(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? "";
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+    case "auth/invalid-login-credentials":
+      return "That email and password don't match. Check them, or reset your password.";
+    case "auth/email-already-in-use":
+      return "An account already exists for this email. Sign in instead, or reset your password.";
+    case "auth/weak-password":
+      return "Use at least 6 characters for your password.";
+    case "auth/invalid-email":
+    case "auth/missing-email":
+      return "Enter a valid email address.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Wait a few minutes and try again.";
+    case "auth/network-request-failed":
+      return "You're offline or the connection dropped. Check your internet and try again.";
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return "Google sign-in was closed before it finished.";
+    case "auth/unauthorized-domain":
+      return "Google sign-in isn't enabled for this web address yet.";
+    case "auth/operation-not-allowed":
+      return "This sign-in method is turned off for the app.";
+    case "auth/user-disabled":
+      return "This account has been disabled.";
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}
+
+/** Phones and installed apps can't reliably use popups, so they use a full-page redirect. */
+function prefersRedirect(): boolean {
+  if (typeof window === "undefined") return false;
+  const standalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const touchPhone = window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 900;
+  return standalone || touchPhone;
+}
+
+function toProfile(fbUser: FirebaseUser): AuthUserProfile {
+  const providerId = fbUser.providerData[0]?.providerId;
+  return {
+    uid: fbUser.uid,
+    email: fbUser.email,
+    displayName: fbUser.displayName || fbUser.email?.split("@")[0] || "You",
+    photoURL: fbUser.photoURL,
+    isAnonymous: false,
+    provider: providerId === "google.com" ? "google" : "password",
+  };
+}
+
+async function syncProfileToServer(fbUser: FirebaseUser, displayName: string | null) {
+  try {
+    const idToken = await fbUser.getIdToken();
+    await fetch("/api/auth/firebase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ displayName }),
+    });
+  } catch {
+    // best effort; retried on next session
+  }
+}
 
 export function FirebaseAuthProvider({ children }: { children: React.ReactNode }) {
   const [configState, setConfigState] = useState(getClientFirebaseConfig());
@@ -60,20 +138,15 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<AuthUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Demo sessions are purely local: render the app immediately, no network.
+  // Old demo sessions: forget them so the app asks for a real sign-in.
   useEffect(() => {
     try {
-      const storedDemo = localStorage.getItem(DEMO_USER_KEY);
-      if (storedDemo) {
-        setUser(JSON.parse(storedDemo) as AuthUserProfile);
-        setLoading(false);
-      }
+      localStorage.removeItem("cc:demo_auth_user");
     } catch {
-      // ignore unreadable storage
+      // ignore
     }
   }, []);
 
-  // Listen for custom Firebase configuration updates
   useEffect(() => {
     const onCfgChange = () => {
       resetFirebaseClient();
@@ -83,235 +156,113 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
     return () => window.removeEventListener("cc:firebase-config-changed", onCfgChange);
   }, []);
 
-  // Sync Firebase Auth state
+  // Surface errors from a Google redirect sign-in (success is picked up by onAuthStateChanged).
+  useEffect(() => {
+    const auth = getFirebaseAuth();
+    if (!auth) return;
+    getRedirectResult(auth).catch((err) => {
+      toast("Google sign-in failed", { tone: "coral", body: authErrorMessage(err) });
+    });
+  }, [configState]);
+
+  // Waits only for Firebase to restore the session from IndexedDB (no server round trip).
   useEffect(() => {
     const auth = getFirebaseAuth();
     if (!auth) {
       setLoading(false);
       return;
     }
-
-    // Fires once Firebase restores the session from IndexedDB (no server round trip),
-    // so the app shell waits only for that, never for an API call.
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setRawUser(fbUser);
-      if (fbUser && !fbUser.isAnonymous) {
-        const providerId = fbUser.providerData[0]?.providerId;
-        const profile: AuthUserProfile = {
-          uid: fbUser.uid,
-          email: fbUser.email,
-          displayName: fbUser.displayName || fbUser.email?.split("@")[0] || "Athlete",
-          photoURL: fbUser.photoURL,
-          isAnonymous: false,
-          provider: providerId === "google.com" ? "google" : "password",
-        };
-        // Wipe demo data (or another account's) before showing this account.
-        await claimLocalData(fbUser.uid);
-        localStorage.removeItem(DEMO_USER_KEY);
-        setUser(profile);
+      if (!fbUser || fbUser.isAnonymous) {
+        if (fbUser?.isAnonymous) await signOut(auth).catch(() => undefined);
+        setUser(null);
         setLoading(false);
-
-        // Background work only: never blocks the first render.
-        const syncedKey = `cc:profile_synced:${fbUser.uid}`;
-        if (fbUser.email && sessionStorage.getItem(syncedKey) !== "1") {
-          sessionStorage.setItem(syncedKey, "1");
-          void syncFirebaseWithBackend({ email: fbUser.email, uid: fbUser.uid, displayName: profile.displayName });
-        }
-        if (profile.displayName) void updateLocalProfile({ display_name: profile.displayName });
-        void syncFirestoreWithLocalDB(fbUser.uid);
         return;
       }
-
-      const storedDemo = localStorage.getItem(DEMO_USER_KEY);
-      setUser(storedDemo ? (JSON.parse(storedDemo) as AuthUserProfile) : null);
+      const profile = toProfile(fbUser);
+      // Never show one account's data to another on a shared device.
+      await claimLocalData(fbUser.uid);
+      setUser(profile);
       setLoading(false);
-    });
 
+      const syncedKey = `cc:profile_synced:${fbUser.uid}`;
+      if (sessionStorage.getItem(syncedKey) !== "1") {
+        sessionStorage.setItem(syncedKey, "1");
+        void syncProfileToServer(fbUser, profile.displayName);
+      }
+      if (profile.displayName) void updateLocalProfile({ display_name: profile.displayName });
+      void syncFirestoreWithLocalDB(fbUser.uid);
+    });
     return () => unsubscribe();
   }, [configState]);
 
-  async function syncFirebaseWithBackend(fbUser: { email: string; uid: string; displayName?: string | null; photoURL?: string | null }) {
+  async function signInWithGoogle(): Promise<AuthResult> {
+    const auth = getFirebaseAuth();
+    if (!auth || !configState.isConfigured) return notConfigured();
+    const provider = getGoogleProvider();
     try {
-      const idToken = await getFirebaseAuth()?.currentUser?.getIdToken();
-      if (!idToken) return null;
-      const res = await fetch("/api/auth/firebase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ displayName: fbUser.displayName ?? null }),
-      });
-      return await res.json();
-    } catch {
-      return null;
-    }
-  }
-
-  async function signInWithGoogle(): Promise<{ success: boolean; error?: string }> {
-    const auth = getFirebaseAuth();
-    if (auth && configState.isConfigured) {
-      try {
-        const provider = getGoogleProvider();
-        const res = await signInWithPopup(auth, provider);
-        if (res.user.email) {
-          await syncFirebaseWithBackend({
-            email: res.user.email,
-            uid: res.user.uid,
-            displayName: res.user.displayName,
-            photoURL: res.user.photoURL,
-          });
-        }
-        toast(`Signed in as ${res.user.displayName ?? res.user.email}`, { tone: "emerald" });
-        return { success: true };
-      } catch (err: unknown) {
-        const errObj = err as { code?: string; message?: string };
-        const msg = errObj.message || String(err);
-        if (errObj.code === "auth/popup-closed-by-user") {
-          toast("Google sign-in popup closed", { tone: "neutral" });
-          return { success: false, error: "Popup closed" };
-        }
-        if (errObj.code === "auth/unauthorized-domain") {
-          toast("Domain not authorized in Firebase Console", {
-            tone: "amber",
-            body: "Add your current domain (osperformance.vercel.app) to Firebase Console > Authentication > Settings > Authorized domains. You can also sign in with Email/Password below.",
-          });
-          return { success: false, error: "Unauthorized domain in Firebase Console" };
-        } else {
-          toast("Google sign-in error", { tone: "coral", body: msg });
-          return { success: false, error: msg };
-        }
+      if (prefersRedirect()) {
+        await signInWithRedirect(auth, provider);
+        return { success: true, redirecting: true };
       }
-    }
-
-    return { success: false, error: "Firebase Authentication is not initialized or configured" };
-  }
-
-  async function signInWithEmail(email: string, pass: string): Promise<{ success: boolean; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
-    const auth = getFirebaseAuth();
-
-    // 1. Attempt Firebase Authentication
-    if (auth && configState.isConfigured) {
-      try {
-        const fbRes = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-        if (fbRes.user.email) {
-          await syncFirebaseWithBackend({
-            email: fbRes.user.email,
-            uid: fbRes.user.uid,
-            displayName: fbRes.user.displayName,
-          });
-        }
-        const activeUser: AuthUserProfile = {
-          uid: fbRes.user.uid,
-          email: fbRes.user.email,
-          displayName: fbRes.user.displayName || cleanEmail.split("@")[0] || null,
-          photoURL: fbRes.user.photoURL ?? null,
-          isAnonymous: false,
-          provider: "password",
-        };
-        setUser(activeUser);
-        localStorage.removeItem(DEMO_USER_KEY);
-        toast(`Signed in as ${activeUser.displayName}`, { tone: "emerald" });
-        return { success: true };
-      } catch (fbErr: unknown) {
-        const errObj = fbErr as { code?: string; message?: string };
-        const msg =
-          errObj.code === "auth/wrong-password" || errObj.code === "auth/invalid-credential" || errObj.code === "auth/user-not-found"
-            ? "Wrong email or password."
-            : errObj.code === "auth/too-many-requests"
-              ? "Too many attempts. Try again in a few minutes."
-              : errObj.message || "Could not sign in.";
-        toast("Sign in failed", { tone: "coral", body: msg });
-        return { success: false, error: msg };
-      }
-    }
-
-    const msg = "Email sign-in isn't available right now. Try the demo instead.";
-    toast("Sign in unavailable", { tone: "amber", body: msg });
-    return { success: false, error: msg };
-  }
-
-  async function signUpWithEmail(email: string, pass: string, name?: string): Promise<{ success: boolean; error?: string }> {
-    const cleanEmail = email.trim().toLowerCase();
-    const finalName = name?.trim() || "Performance Athlete";
-    const auth = getFirebaseAuth();
-
-    // 1. Attempt Firebase User Creation
-    if (auth && configState.isConfigured) {
-      try {
-        const fbRes = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-        if (fbRes.user) {
-          await updateFirebaseProfile(fbRes.user, { displayName: finalName }).catch(() => undefined);
-          await syncFirebaseWithBackend({
-            email: cleanEmail,
-            uid: fbRes.user.uid,
-            displayName: finalName,
-          });
-        }
-        const activeUser: AuthUserProfile = {
-          uid: fbRes.user.uid,
-          email: cleanEmail,
-          displayName: finalName,
-          photoURL: null,
-          isAnonymous: false,
-          provider: "password",
-        };
-        setUser(activeUser);
-        localStorage.removeItem(DEMO_USER_KEY);
-        void updateLocalProfile({ display_name: finalName });
-        toast("Firebase account registered successfully", { tone: "emerald" });
-        return { success: true };
-      } catch (fbErr: unknown) {
-        const errObj = fbErr as { code?: string; message?: string };
-        if (errObj.code === "auth/email-already-in-use") {
-          // If already in Firebase, attempt sign in
-          return signInWithEmail(cleanEmail, pass);
-        }
-        if (errObj.code === "auth/weak-password") {
-          toast("Registration error", { tone: "coral", body: "Password must be at least 6 characters." });
-          return { success: false, error: "Password must be at least 6 characters." };
-        }
-        if (errObj.code === "auth/invalid-email") {
-          toast("Registration error", { tone: "coral", body: "Please enter a valid email address." });
-          return { success: false, error: "Invalid email address." };
-        }
-        const msg = errObj.message || "Could not create your account.";
-        toast("Registration error", { tone: "coral", body: msg });
-        return { success: false, error: msg };
-      }
-    }
-
-    const msg = "Sign-up isn't available right now. Try the demo instead.";
-    toast("Sign-up unavailable", { tone: "amber", body: msg });
-    return { success: false, error: msg };
-  }
-
-  /**
-   * The demo is fully local: seeded IndexedDB data, no account and no server calls,
-   * so it opens instantly. Changes made in the demo stay on this device and never
-   * sync anywhere.
-   */
-  async function signInAsGuest(name = "Ayush"): Promise<{ success: boolean; error?: string }> {
-    try {
-      const auth = getFirebaseAuth();
-      if (auth?.currentUser) await signOut(auth).catch(() => undefined);
-      const demoUser: AuthUserProfile = {
-        uid: DEMO_OWNER,
-        email: null,
-        displayName: name,
-        photoURL: null,
-        isAnonymous: true,
-        provider: "demo",
-      };
-      await claimLocalData(DEMO_OWNER);
-      await loadDemoData();
-      localStorage.setItem(DEMO_USER_KEY, JSON.stringify(demoUser));
-      localStorage.setItem("cc:current_uid", DEMO_OWNER);
-      void updateLocalProfile({ display_name: name });
-      setUser(demoUser);
-      setLoading(false);
+      await signInWithPopup(auth, provider);
       return { success: true };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not start the demo.";
-      return { success: false, error: msg };
+      const code = (err as { code?: string }).code;
+      // Popup blocked (common on some browsers): fall back to a full-page redirect.
+      if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") {
+        try {
+          await signInWithRedirect(auth, provider);
+          return { success: true, redirecting: true };
+        } catch (redirectErr) {
+          return { success: false, error: authErrorMessage(redirectErr) };
+        }
+      }
+      return { success: false, error: authErrorMessage(err) };
+    }
+  }
+
+  async function signInWithEmail(email: string, pass: string): Promise<AuthResult> {
+    const auth = getFirebaseAuth();
+    if (!auth || !configState.isConfigured) return notConfigured();
+    try {
+      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), pass);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: authErrorMessage(err) };
+    }
+  }
+
+  async function signUpWithEmail(email: string, pass: string, name?: string): Promise<AuthResult> {
+    const auth = getFirebaseAuth();
+    if (!auth || !configState.isConfigured) return notConfigured();
+    const finalName = name?.trim() || email.split("@")[0] || "You";
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), pass);
+      await updateFirebaseProfile(cred.user, { displayName: finalName }).catch(() => undefined);
+      setUser(toProfile(cred.user));
+      void updateLocalProfile({ display_name: finalName });
+      void syncProfileToServer(cred.user, finalName);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: authErrorMessage(err) };
+    }
+  }
+
+  async function resetPassword(email: string): Promise<AuthResult> {
+    const auth = getFirebaseAuth();
+    if (!auth || !configState.isConfigured) return notConfigured();
+    try {
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase(), {
+        url: `${window.location.origin}/login?reset=done`,
+      });
+      return { success: true };
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      // Don't reveal whether an account exists for this email.
+      if (code === "auth/user-not-found") return { success: true };
+      return { success: false, error: authErrorMessage(err) };
     }
   }
 
@@ -319,7 +270,6 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
     const auth = getFirebaseAuth();
     if (auth) await signOut(auth).catch(() => undefined);
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    localStorage.removeItem(DEMO_USER_KEY);
     localStorage.removeItem("cc:current_uid");
     // Don't leave the previous person's meals, workouts or spending on this device.
     await releaseLocalData().catch(() => undefined);
@@ -339,7 +289,7 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
         signInWithGoogle,
         signInWithEmail,
         signUpWithEmail,
-        signInAsGuest,
+        resetPassword,
         logout,
       }}
     >

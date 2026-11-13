@@ -4,19 +4,15 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Download, X } from "lucide-react";
 import { usePWAInstall } from "@/lib/hooks/use-pwa-install";
-import { IOSInstallSheet } from "./ios-install-sheet";
+import { InstallGuideSheet } from "./install-app";
 
 const DISMISS_KEY = "cc:pwa_prompt_dismissed_at";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function PWAInstallBanner() {
-  const {
-    isInstallable,
-    isInstalled,
-    showIOSGuide,
-    setShowIOSGuide,
-    promptInstall,
-  } = usePWAInstall();
+  const { isInstallable, isInstalled, platform, showGuide, setShowGuide, promptInstall } = usePWAInstall();
+  // Desktop browsers show their own install icon in the address bar; the banner is for phones.
+  const worthShowing = isInstallable && platform !== "desktop-manual";
 
   const [dismissed, setDismissed] = useState(true);
 
@@ -49,9 +45,9 @@ export function PWAInstallBanner() {
 
   return (
     <>
-      <IOSInstallSheet open={showIOSGuide} onOpenChange={setShowIOSGuide} />
+      <InstallGuideSheet open={showGuide} onOpenChange={setShowGuide} platform={platform} />
 
-      {!dismissed && isInstallable && (
+      {!dismissed && worthShowing && (
         <aside
           role="region"
           aria-label="Install app"
@@ -84,7 +80,7 @@ export function PWAInstallBanner() {
               <button
                 type="button"
                 onClick={() => void promptInstall()}
-                className="flex items-center gap-1.5 rounded-xl bg-flame px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-flame/25 hover:brightness-110 active:scale-95 transition-all"
+                className="flex min-h-11 items-center gap-1.5 rounded-xl bg-flame px-3.5 text-xs font-semibold text-[#0C0C0D] shadow-md shadow-flame/25 hover:brightness-110 active:scale-95 transition-all"
               >
                 <Download size={13} />
                 <span>Install</span>
@@ -94,7 +90,7 @@ export function PWAInstallBanner() {
                 type="button"
                 onClick={handleDismiss}
                 aria-label="Dismiss installation prompt"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+                className="flex size-11 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <X size={14} />
               </button>

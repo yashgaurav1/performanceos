@@ -1,101 +1,106 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
-  readonly userChoice: Promise<{
-    outcome: "accepted" | "dismissed";
-    platform: string;
-  }>;
+  readonly userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
   prompt(): Promise<void>;
 }
 
+declare global {
+  interface Window {
+    __pwaPrompt?: BeforeInstallPromptEvent | null;
+    __pwaInstalled?: boolean;
+  }
+}
+
+/** How this device installs web apps. */
+export type InstallPlatform =
+  | "native" // Chrome / Edge / Samsung: one-tap prompt
+  | "ios" // Safari: Share → Add to Home Screen
+  | "ios-other" // Chrome/Firefox on iPhone: must open in Safari
+  | "in-app" // Instagram / LinkedIn / Facebook in-app browser: open in browser first
+  | "android-manual" // Android browser without prompt: menu → Install / Add to Home screen
+  | "desktop-manual" // Desktop without prompt yet: address bar install icon
+  | "unsupported";
+
+function detectPlatform(hasPrompt: boolean): InstallPlatform {
+  if (hasPrompt) return "native";
+  const ua = navigator.userAgent.toLowerCase();
+  const iOS = /iphone|ipad|ipod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const inApp = /instagram|fban|fbav|linkedinapp|twitter|line\/|micromessenger|snapchat/.test(ua);
+  if (inApp) return "in-app";
+  if (iOS) return /crios|fxios|edgios|opios/.test(ua) ? "ios-other" : "ios";
+  if (/android/.test(ua)) return "android-manual";
+  if (/chrome|edg\//.test(ua)) return "desktop-manual";
+  return "unsupported";
+}
+
+function isStandalone(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    document.referrer.includes("android-app://") ||
+    window.__pwaInstalled === true
+  );
+}
+
+/**
+ * Install state for every page. The `beforeinstallprompt` event is captured by an
+ * inline script in the root layout, so it is never missed even if this hook mounts late.
+ */
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isSafari, setIsSafari] = useState(false);
-  const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [platform, setPlatform] = useState<InstallPlatform>("unsupported");
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const sync = () => {
+      setInstalled(isStandalone());
+      setPlatform(detectPlatform(Boolean(window.__pwaPrompt)));
+      setReady(true);
+    };
+    sync();
+    window.addEventListener("cc:pwa-prompt", sync);
+    const mq = window.matchMedia("(display-mode: standalone)");
+    mq.addEventListener?.("change", sync);
+    return () => {
+      window.removeEventListener("cc:pwa-prompt", sync);
+      mq.removeEventListener?.("change", sync);
+    };
+  }, []);
 
-    // Check if already running in standalone mode (installed PWA)
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
-      document.referrer.includes("android-app://");
-
-    if (isStandalone) {
-      setIsInstalled(true);
+  /** Native prompt when available; otherwise opens the step-by-step guide for this device. */
+  const promptInstall = useCallback(async () => {
+    const evt = window.__pwaPrompt;
+    if (evt) {
+      await evt.prompt();
+      const choice = await evt.userChoice;
+      window.__pwaPrompt = null;
+      if (choice.outcome === "accepted") setInstalled(true);
+      setPlatform(detectPlatform(false));
       return;
     }
-
-    // Detect iOS & Safari
-    const ua = window.navigator.userAgent.toLowerCase();
-    const iOS =
-      /iphone|ipad|ipod/.test(ua) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const safari = iOS && /safari/.test(ua) && !/crios|fxios|opios|edgios/.test(ua);
-    setIsIOS(iOS);
-    setIsSafari(safari);
-
-    // If iOS not in standalone, it's installable via Share -> Add to Home Screen
-    if (iOS) {
-      setIsInstallable(true);
-    }
-
-    // Capture beforeinstallprompt for Android and Chromium desktop
-    const handleBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
-    };
-
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setIsInstallable(false);
-      setDeferredPrompt(null);
-    };
-
-    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
-    window.addEventListener("appinstalled", handleAppInstalled);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
-      window.removeEventListener("appinstalled", handleAppInstalled);
-    };
+    setShowGuide(true);
   }, []);
 
-  const promptInstall = useCallback(async () => {
-    if (deferredPrompt) {
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        setIsInstalled(true);
-        setIsInstallable(false);
-      }
-      setDeferredPrompt(null);
-    } else if (isIOS) {
-      setShowIOSGuide(true);
-    }
-  }, [deferredPrompt, isIOS]);
-
-  const dismissIOSGuide = useCallback(() => {
-    setShowIOSGuide(false);
-  }, []);
+  const canInstall = ready && !installed && platform !== "unsupported";
 
   return {
-    isInstallable,
-    isInstalled,
-    isIOS,
-    isSafari,
-    showIOSGuide,
-    setShowIOSGuide,
+    ready,
+    platform,
+    isInstalled: installed,
+    /** Something useful can be shown (prompt or guide). */
+    isInstallable: canInstall,
+    hasNativePrompt: platform === "native",
+    isIOS: platform === "ios" || platform === "ios-other",
+    showIOSGuide: showGuide,
+    setShowIOSGuide: setShowGuide,
+    showGuide,
+    setShowGuide,
     promptInstall,
-    dismissIOSGuide,
-    hasNativePrompt: Boolean(deferredPrompt),
+    dismissIOSGuide: () => setShowGuide(false),
   };
 }

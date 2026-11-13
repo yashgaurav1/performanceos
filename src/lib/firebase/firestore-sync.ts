@@ -7,7 +7,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { getFirebaseFirestore, getFirebaseAuth } from "./client";
-import { getCurrentAthleteUid, isDemoMode } from "@/lib/db/firestore-client";
+import { getCurrentAthleteUid } from "@/lib/db/firestore-client";
 import { getDB, PROFILE_KEY } from "@/lib/db/dexie";
 import type {
   DailyLog,
@@ -29,9 +29,9 @@ export function getCurrentFirebaseUid(): string {
   return auth?.currentUser?.uid || getCurrentAthleteUid();
 }
 
-/** Guard helper: prevents remote Firestore mutations in read-only demo mode */
-function isDemoUid(uid: string): boolean {
-  return uid === "ayush" || uid.startsWith("guest-demo-") || isDemoMode();
+/** Never write to Firestore without a signed-in account. */
+function noAccount(uid: string): boolean {
+  return !uid;
 }
 
 /**
@@ -41,7 +41,7 @@ function isDemoUid(uid: string): boolean {
 export async function saveProfileToFirestore(patch: Partial<Profile>, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const userRef = doc(db, "users", targetUid);
@@ -67,7 +67,7 @@ export async function saveProfileToFirestore(patch: Partial<Profile>, uid?: stri
 export async function saveDailyLogToFirestore(date: string, patch: Partial<DailyLog>, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   const payload = {
     ...patch,
@@ -97,7 +97,7 @@ export async function saveDailyLogToFirestore(date: string, patch: Partial<Daily
 export async function saveFoodEntryToFirestore(entry: FoodEntry, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   const payload = {
     ...entry,
@@ -121,7 +121,7 @@ export async function saveFoodEntryToFirestore(entry: FoodEntry, uid?: string): 
 export async function deleteFoodEntryFromFirestore(entryId: string, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     await deleteDoc(doc(db, "users", targetUid, "meals", entryId));
@@ -138,7 +138,7 @@ export async function deleteFoodEntryFromFirestore(entryId: string, uid?: string
 export async function saveWorkoutToFirestore(workout: Workout, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const workoutRef = doc(db, "users", targetUid, "workouts", workout.id);
@@ -157,7 +157,7 @@ export async function saveWorkoutToFirestore(workout: Workout, uid?: string): Pr
 export async function deleteWorkoutFromFirestore(workoutId: string, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     await deleteDoc(doc(db, "users", targetUid, "workouts", workoutId));
@@ -172,7 +172,7 @@ export async function deleteWorkoutFromFirestore(workoutId: string, uid?: string
 export async function saveWorkoutSetToFirestore(set: WorkoutSet, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const setRef = doc(db, "users", targetUid, "workout_sets", set.id);
@@ -199,7 +199,7 @@ export async function saveWorkoutSetToFirestore(set: WorkoutSet, uid?: string): 
 export async function deleteWorkoutSetFromFirestore(setId: string, workoutId?: string, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     await deleteDoc(doc(db, "users", targetUid, "workout_sets", setId));
@@ -220,7 +220,7 @@ export async function deleteWorkoutSetFromFirestore(setId: string, workoutId?: s
 export async function saveStudySessionToFirestore(session: StudySession, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   const payload = {
     ...session,
@@ -244,7 +244,7 @@ export async function saveStudySessionToFirestore(session: StudySession, uid?: s
 export async function deleteStudySessionFromFirestore(sessionId: string, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     await deleteDoc(doc(db, "users", targetUid, "focus", sessionId));
@@ -263,7 +263,7 @@ export async function deleteStudySessionFromFirestore(sessionId: string, uid?: s
 export async function saveExpenseToFirestore(expense: Expense, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   const payload = {
     ...expense,
@@ -287,7 +287,7 @@ export async function saveExpenseToFirestore(expense: Expense, uid?: string): Pr
 export async function deleteExpenseFromFirestore(expenseId: string, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     await deleteDoc(doc(db, "users", targetUid, "txns", expenseId));
@@ -304,7 +304,7 @@ export async function deleteExpenseFromFirestore(expenseId: string, uid?: string
 export async function saveGoalTaskToFirestore(task: GoalTask, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const taskRef = doc(db, "users", targetUid, "goals_tasks", task.id);
@@ -323,7 +323,7 @@ export async function saveGoalTaskToFirestore(task: GoalTask, uid?: string): Pro
 export async function deleteGoalTaskFromFirestore(taskId: string, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     await deleteDoc(doc(db, "users", targetUid, "goals_tasks", taskId));
@@ -342,7 +342,7 @@ export async function saveBudgetCategoryToFirestore(
 ): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const catRef = doc(db, "users", targetUid, "budget_categories", category);
@@ -370,7 +370,7 @@ export async function saveCoachCheckInToFirestore(
 ): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const coachRef = doc(db, "users", targetUid, "coach", checkIn.id);
@@ -390,7 +390,7 @@ export async function saveCoachCheckInToFirestore(
 export async function saveWeeklyReviewToFirestore(review: AIWeeklyReview, uid?: string): Promise<void> {
   const targetUid = uid || getCurrentFirebaseUid();
   const db = getFirebaseFirestore();
-  if (!db || isDemoUid(targetUid)) return;
+  if (!db || noAccount(targetUid)) return;
 
   try {
     const reviewRef = doc(db, "users", targetUid, "reviews", review.id);

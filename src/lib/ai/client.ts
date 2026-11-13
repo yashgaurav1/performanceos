@@ -22,7 +22,7 @@ export async function postJSON<T>(url: string, body: unknown): Promise<T> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : { "x-demo-user": "true" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(appCheckToken ? { "X-Firebase-AppCheck": appCheckToken } : {}),
     },
     body: JSON.stringify(body),

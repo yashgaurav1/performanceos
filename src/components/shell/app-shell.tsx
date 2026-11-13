@@ -6,7 +6,8 @@ import { BottomNav } from "./bottom-nav";
 import { ClientGate } from "./client-gate";
 import { DesktopSidebar } from "./sidebar";
 import { MobileTopBar } from "./top-bar";
-import { OmniLogSheet } from "./omni-log";
+import { AssistantSheet } from "@/components/assistant/assistant-sheet";
+import { ASSISTANT_OPEN_EVENT } from "@/components/assistant/open-assistant";
 import { DeveloperDrawer } from "./developer-drawer";
 import { FocusTimerEngine } from "@/components/study/focus-timer-engine";
 import { PWAInstallBanner } from "@/components/pwa/pwa-install-banner";
@@ -29,6 +30,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         document.body.setAttribute("data-capture", "true");
       }
     }
+  }, []);
+
+  useEffect(() => {
+    const onOpen = () => setOmni(true);
+    window.addEventListener(ASSISTANT_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(ASSISTANT_OPEN_EVENT, onOpen);
   }, []);
 
   useEffect(() => {
@@ -71,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <BottomNav onOmni={() => setOmni(true)} />
       <ClientGate fallback={null}>
-        <OmniLogSheet open={omni} onOpenChange={setOmni} />
+        <AssistantSheet open={omni} onOpenChange={setOmni} />
         <FocusTimerEngine />
         <DeveloperDrawer />
         <PWAInstallBanner />

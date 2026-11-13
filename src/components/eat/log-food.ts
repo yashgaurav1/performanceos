@@ -19,7 +19,7 @@ function titleFor(items: ParsedFoodItem[]): string {
 }
 
 /** Saves parsed foods as one meal entry (with per-item breakdown) and offers Undo. */
-export async function logFoodItems(items: ParsedFoodItem[], date: string, slot: MealSlot) {
+export async function logFoodItems(items: ParsedFoodItem[], date: string, slot: MealSlot, opts: { toast?: boolean } = {}) {
   if (!items.length) return null;
   const totals = totalsForItems(items);
   const breakdown: FoodItemBreakdown[] = items.map((i) => {
@@ -47,7 +47,7 @@ export async function logFoodItems(items: ParsedFoodItem[], date: string, slot: 
     items_breakdown: breakdown,
     ...totals,
   });
-  toast(`${totals.kcal_point} kcal logged`, {
+  if (opts.toast !== false) toast(`${totals.kcal_point} kcal logged`, {
     tone: "emerald",
     body: `${titleFor(items)} · ${totals.protein_g} g protein`,
     action: { label: "Undo", onClick: () => deleteFoodEntry(entry.id) },

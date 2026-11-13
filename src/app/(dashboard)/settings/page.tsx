@@ -13,6 +13,7 @@ import { clearLocalData, exportLocalData } from "@/lib/demo/seed";
 import { getValidIdToken } from "@/lib/firebase/auth-ready";
 import { FirebaseAuthCard } from "@/components/settings/firebase-auth-card";
 import { usePWAInstall } from "@/lib/hooks/use-pwa-install";
+import { InstallAppButton } from "@/components/pwa/install-app";
 import type { Profile } from "@/types/database.types";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ const DAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function SettingsPage() {
   const profile = useProfile();
-  const { isInstalled, promptInstall } = usePWAInstall();
+  const { isInstalled } = usePWAInstall();
   const [draft, setDraft] = useState<Partial<Record<keyof Profile, string>>>({});
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -209,13 +210,7 @@ export default function SettingsPage() {
                 <CheckCircle2 size={14} /> Installed as Standalone App
               </div>
             ) : (
-              <Button
-                variant="primary"
-                onClick={() => void promptInstall()}
-                className="gap-2"
-              >
-                <Download size={16} /> Install PerformanceOS
-              </Button>
+              <InstallAppButton variant="primary" label="Install PerformanceOS" />
             )}
             <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald" />

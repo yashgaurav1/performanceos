@@ -55,42 +55,7 @@ function HeroVideo() {
 
 export function HeroSection() {
   const router = useRouter();
-  const { signInAsGuest, signInWithGoogle } = useFirebaseAuth();
-  const [demoLoading, setDemoLoading] = useState(false);
-  const [demoError, setDemoError] = useState<string | null>(null);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  async function handleLiveDemo() {
-    if (demoLoading) return;
-    setDemoLoading(true);
-    setDemoError(null);
-    try {
-      const res = await signInAsGuest("Ayush");
-      if (!res.success) throw new Error(res.error);
-      router.push("/today");
-    } catch (err: unknown) {
-      console.error("Demo start error:", err);
-      setDemoError("Unable to initialize demo. Please tap to retry.");
-      setDemoLoading(false);
-    }
-  }
-
-  async function handleGoogleLogin() {
-    if (googleLoading) return;
-    setGoogleLoading(true);
-    try {
-      const res = await signInWithGoogle();
-      if (res.success) {
-        router.push("/today");
-      } else {
-        router.push("/login");
-      }
-    } catch {
-      router.push("/login");
-    } finally {
-      setGoogleLoading(false);
-    }
-  }
+  const { user } = useFirebaseAuth();
 
   return (
     <section className="relative pt-2 pb-6 sm:pt-16 sm:pb-32 px-4 sm:px-6 lg:px-8 max-w-[1200px] mx-auto overflow-hidden">
@@ -130,40 +95,22 @@ export function HeroSection() {
             <Button
               variant="primary"
               size="lg"
-              onClick={handleLiveDemo}
-              disabled={demoLoading}
+              onClick={() => router.push(user ? "/today" : "/login?mode=signup")}
               className="w-full sm:w-auto"
             >
-              {demoLoading ? <span>Loading demo...</span> : <span>Try the live demo</span>}
+              <span>{user ? "Open PerformanceOS" : "Get started free"}</span>
               <ArrowRight className="w-4 h-4" />
             </Button>
 
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={handleGoogleLogin}
-              disabled={googleLoading}
-              className="w-full sm:w-auto"
-            >
-              Continue with Google
-            </Button>
+            {!user && (
+              <Button variant="secondary" size="lg" onClick={() => router.push("/login")} className="w-full sm:w-auto">
+                Sign in
+              </Button>
+            )}
           </div>
 
-          {demoError && (
-            <div className="mb-3 text-xs text-[#FF5533] flex items-center justify-center lg:justify-start gap-2">
-              <span>{demoError}</span>
-              <button
-                type="button"
-                onClick={handleLiveDemo}
-                className="underline font-semibold text-white hover:text-[#FF5533] cursor-pointer"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
           <p className="text-xs text-[#A1A1AA] mb-5 sm:mb-8 font-medium">
-            No sign-up needed for the demo · Works offline
+            Free · Works offline · Install it like an app
           </p>
 
           {/* 4 Feature Value Chips */}

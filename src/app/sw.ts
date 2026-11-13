@@ -25,9 +25,9 @@ const serwist = new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
-    // 1. NEVER cache any /api/ route responses (strict requirement)
+    // 1. NEVER cache /api/ responses or the Firebase sign-in helper pages (/__/auth, /__/firebase)
     {
-      matcher: ({ url }) => url.pathname.startsWith("/api/"),
+      matcher: ({ url }) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/__/"),
       handler: new NetworkOnly(),
     },
     // 2. Offline App Shell: NetworkFirst for app routes (/today, /eat, /train, etc.)

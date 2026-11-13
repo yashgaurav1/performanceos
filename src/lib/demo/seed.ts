@@ -1,7 +1,5 @@
 "use client";
-import { doc, writeBatch } from "firebase/firestore";
 import { getDB, PROFILE_KEY } from "@/lib/db/dexie";
-import { getDbFirestore, getCurrentAthleteUid } from "@/lib/db/firestore-client";
 import { toISODate } from "@/lib/math/dates";
 import demoDataJson from "./demo-data.json";
 import type {
@@ -147,41 +145,6 @@ export async function loadDemoData() {
     );
   });
 
-  // Seed Cloud Firestore local cache for offline/multi-tab support
-  if (typeof window !== "undefined") {
-    try {
-      const firestore = getDbFirestore();
-      if (firestore) {
-        const uid = getCurrentAthleteUid();
-        const batch = writeBatch(firestore);
-        const profRef = doc(firestore, "users", uid);
-        batch.set(profRef, { ...profile, updatedAt: new Date().toISOString() }, { merge: true });
-        for (const log of dailyLogs) {
-          batch.set(doc(firestore, "users", uid, "days", log.log_date), { ...log, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-        for (const meal of food.slice(-30)) {
-          batch.set(doc(firestore, "users", uid, "meals", meal.id), { ...meal, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-        for (const task of tasks) {
-          batch.set(doc(firestore, "users", uid, "goals_tasks", task.id), { ...task, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-        for (const session of sessions.slice(-30)) {
-          batch.set(doc(firestore, "users", uid, "focus", session.id), { ...session, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-        for (const exp of expenses) {
-          batch.set(doc(firestore, "users", uid, "txns", exp.id), { ...exp, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-        for (const w of workouts.slice(-20)) {
-          batch.set(doc(firestore, "users", uid, "workouts", w.id), { ...w, updatedAt: new Date().toISOString() }, { merge: true });
-        }
-        batch.commit().catch((err) => {
-          console.warn("Firestore demo batch notice:", err);
-        });
-      }
-    } catch (err) {
-      console.warn("Firestore demo seed notice:", err);
-    }
-  }
 }
 
 /** Developer Mode: seed specialized diet & training phases. */
