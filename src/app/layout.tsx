@@ -89,6 +89,16 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en-IN" className={`${satoshi.variable} ${inter.variable} dark`}>
+      <head>
+        {/* Android/Chrome fire beforeinstallprompt once, early. Catch it before React loads
+            so any Install button on any page can use it (see src/lib/hooks/use-pwa-install.ts). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__pwaPrompt=e;window.dispatchEvent(new Event('cc:pwa-prompt'))});window.addEventListener('appinstalled',function(){window.__pwaPrompt=null;window.__pwaInstalled=true;window.dispatchEvent(new Event('cc:pwa-prompt'))});",
+          }}
+        />
+      </head>
       <body className="min-h-dvh antialiased bg-[#0C0C0D] text-[#F5F5F4]">
         <Providers>{children}</Providers>
       </body>

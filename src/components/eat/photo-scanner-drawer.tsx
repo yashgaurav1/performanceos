@@ -12,7 +12,6 @@ import { toast } from "@/components/ui/toast";
 import { compressImage, type CompressedImage } from "@/lib/ai/compress-image";
 import { mirrorLedger } from "@/lib/ai/client";
 import { waitForAuthReady, getValidIdToken } from "@/lib/firebase/auth-ready";
-import { getCurrentAthleteUid } from "@/lib/db/firestore-client";
 import { getCurrentFirebaseUid } from "@/lib/firebase/firestore-sync";
 import { uploadMealPhotoToStorage } from "@/lib/firebase/storage-client";
 import { getClientAppCheckToken } from "@/lib/firebase/app-check";
@@ -66,7 +65,6 @@ export function PhotoScannerConfirmationDrawer({ open, onOpenChange, date }: { o
   const analyse = useMutation({
     mutationFn: async (img: CompressedImage) => {
       const { token: initialToken, user } = await getValidIdToken(false);
-      const activeUid = getCurrentAthleteUid();
       const appCheckToken = await getClientAppCheckToken();
 
       const doVisionRequest = async (token: string | null) => {
@@ -76,7 +74,6 @@ export function PhotoScannerConfirmationDrawer({ open, onOpenChange, date }: { o
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             ...(appCheckToken ? { "X-Firebase-AppCheck": appCheckToken } : {}),
-            "x-athlete-uid": activeUid,
           },
           body: JSON.stringify({
             image_base64: img.base64,

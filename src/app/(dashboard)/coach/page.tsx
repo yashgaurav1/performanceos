@@ -5,7 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AICostAndUsagePill } from "@/components/coach/ai-cost-pill";
 import { WeeklyExecutiveBrief } from "@/components/coach/weekly-executive-brief";
-import { InteractiveCoachDrawer } from "@/components/coach/coach-chat-drawer";
+import { openAssistant } from "@/components/assistant/open-assistant";
 import { WeekInNumbers } from "@/components/coach/week-in-numbers";
 import { buildLocalTelemetry } from "@/lib/ai/local-telemetry";
 import type { WeeklyTelemetry } from "@/lib/ai/schemas";
@@ -24,9 +24,12 @@ export default function CoachPage() {
 function CoachInner() {
   const today = useToday();
   const params = useSearchParams();
-  const [chat, setChat] = useState(params.get("chat") === "1");
   const [telemetry, setTelemetry] = useState<WeeklyTelemetry | null>(null);
   const todayLog = useDailyLog(today);
+
+  useEffect(() => {
+    if (params.get("chat") === "1") openAssistant();
+  }, [params]);
 
   useEffect(() => {
     if (!today) return;
@@ -43,14 +46,13 @@ function CoachInner() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <AICostAndUsagePill />
-          <Button variant="primary" size="sm" className="h-10" onClick={() => setChat(true)}>
-            <MessageCircle size={15} /> Ask coach
+          <Button variant="primary" size="sm" className="h-10" onClick={openAssistant}>
+            <MessageCircle size={15} /> Ask or tell the coach
           </Button>
         </div>
         <WeeklyExecutiveBrief weekStart={startOfWeek(today)} today={today} />
       </div>
       <div className="space-y-3">{telemetry && <WeekInNumbers t={telemetry} />}</div>
-      <InteractiveCoachDrawer open={chat} onOpenChange={setChat} today={today} />
     </div>
   );
 }

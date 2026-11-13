@@ -7,6 +7,7 @@ import { DailyWinsAndFrictionCard } from "@/components/today/wins-friction-card"
 import { TodaySnapshotStrip } from "@/components/today/snapshot-strip";
 import { BigThreeFocusStrip } from "@/components/goals/big-three-strip";
 import { CarryForwardBanner } from "@/components/goals/carry-forward-banner";
+import { AssistantBar, WelcomeCard } from "@/components/today/assistant-bar";
 import { recomputeDayScore } from "@/lib/db/repo";
 import { useToday } from "@/lib/hooks/use-today";
 
@@ -19,6 +20,8 @@ export default function TodayPage() {
   return (
     <div className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
       <div className="space-y-3 lg:space-y-4">
+        <AssistantBar />
+        <WelcomeCard />
         <DayScoreTelemetryHeader date={today} />
         <BigThreeFocusStrip date={today} />
         <CarryForwardBanner date={today} />

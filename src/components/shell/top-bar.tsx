@@ -28,11 +28,6 @@ export function MobileTopBar() {
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
             <OfflineSyncStatusBadge compact />
-            {user?.provider === "demo" && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-sans text-amber bg-amber/15 border border-amber/30">
-                Demo
-              </span>
-            )}
           </div>
         </div>
         <nav className="flex items-center gap-1" aria-label="Modules">

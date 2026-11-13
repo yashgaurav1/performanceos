@@ -7,49 +7,10 @@ import {
 } from "firebase/firestore";
 import { getFirebaseFirestore, getFirebaseAuth } from "@/lib/firebase/client";
 
-/**
- * Resolves the currently active athlete UID.
- * Supports authenticated Firebase accounts, demo mode (Ayush), and local storage session.
- */
+/** The signed-in user's uid, or "" when nobody is signed in. */
 export function getCurrentAthleteUid(): string {
-  if (typeof window === "undefined") return "ayush";
-  try {
-    const auth = getFirebaseAuth();
-    if (auth?.currentUser?.uid) return auth.currentUser.uid;
-
-    const demo = localStorage.getItem("cc:demo_auth_user");
-    if (demo) {
-      const parsed = JSON.parse(demo);
-      if (parsed.uid) return parsed.uid;
-    }
-
-    const current = localStorage.getItem("cc:current_uid");
-    if (current && current.trim()) return current.trim();
-  } catch {
-    // ignore local storage read errors
-  }
-  return "ayush";
-}
-
-/**
- * Returns true if the active session is demo mode (Ayush) or guest demo.
- * Demo mode operates strictly read-only to preserve the 30-day realistic baseline.
- */
-export function isDemoMode(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const auth = getFirebaseAuth();
-    if (auth?.currentUser && !auth.currentUser.isAnonymous) {
-      return false;
-    }
-    const uid = getCurrentAthleteUid();
-    if (uid === "ayush" || uid.startsWith("guest-demo-")) return true;
-    const demo = localStorage.getItem("cc:demo_auth_user");
-    if (demo) return true;
-  } catch {
-    // ignore local storage read errors
-  }
-  return false;
+  if (typeof window === "undefined") return "";
+  return getFirebaseAuth()?.currentUser?.uid ?? "";
 }
 
 export function getDbFirestore(): Firestore | null {

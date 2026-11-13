@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { getDB, PROFILE_KEY } from "@/lib/db/dexie";
-import { isDemoMode } from "@/lib/db/firestore-client";
 import { loadDemoData } from "./seed";
-import { addFoodEntry, addTask } from "@/lib/db/repo";
-import { setDoc } from "firebase/firestore";
 
 vi.mock("@/components/ui/toast", () => ({
   toast: vi.fn(),
@@ -48,7 +45,7 @@ if (typeof (globalThis as unknown as { window: unknown }).window === "undefined"
   (globalThis as unknown as { window: unknown }).window = globalThis;
 }
 
-describe("Demo Mode & 30-Day Continuum Seeding", () => {
+describe("Developer sample data seeding", () => {
   beforeEach(async () => {
     const db = getDB();
     await db.transaction("rw", db.tables, async () => {
@@ -89,54 +86,5 @@ describe("Demo Mode & 30-Day Continuum Seeding", () => {
     const bigThree = tasks.filter((t) => t.is_big_three && t.kind === "daily_task");
     expect(bigThree.length).toBe(3);
     expect(bigThree.filter((t) => t.status === "done").length).toBe(1);
-  });
-
-  it("detects demo mode correctly based on uid and local storage", () => {
-    mockLocalStorage.clear();
-    expect(isDemoMode()).toBe(true); // Default athlete uid is "ayush"
-
-    mockLocalStorage.setItem("cc:current_uid", "real-user-uid-123");
-    expect(isDemoMode()).toBe(false);
-
-    mockLocalStorage.setItem("cc:demo_auth_user", JSON.stringify({ uid: "ayush" }));
-    expect(isDemoMode()).toBe(true);
-  });
-
-  it("saves demo writes on the device but never sends them to Firestore", async () => {
-    await loadDemoData();
-    const db = getDB();
-    mockLocalStorage.setItem("cc:current_uid", "ayush");
-
-    const foodCountBefore = await db.foodEntries.count();
-    await addFoodEntry({
-      log_date: "2026-10-27",
-      meal_slot: "dinner",
-      meal_title: "Test Unauthorized Food Entry",
-      source_type: "quick_manual",
-      photo_path: null,
-      prep_modifier: "standard",
-      confidence_tier: "high",
-      kcal_point: 500,
-      kcal_low: 450,
-      kcal_high: 550,
-      protein_g: 30,
-      carbs_g: 50,
-      fat_g: 10,
-      fiber_g: 5,
-      items_breakdown: [],
-    });
-    const foodCountAfter = await db.foodEntries.count();
-    expect(foodCountAfter).toBe(foodCountBefore + 1);
-
-    const taskCountBefore = await db.goalsTasks.count();
-    await addTask({
-      title: "Test Unauthorized Task",
-      domain: "career",
-    });
-    const taskCountAfter = await db.goalsTasks.count();
-    expect(taskCountAfter).toBe(taskCountBefore + 1);
-
-    // The shared demo athlete is never written to the cloud.
-    expect(vi.mocked(setDoc)).not.toHaveBeenCalled();
   });
 });

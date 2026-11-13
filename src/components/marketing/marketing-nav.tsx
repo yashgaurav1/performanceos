@@ -7,11 +7,12 @@ import { ArrowRight, Menu, X } from "lucide-react";
 import { PerformanceOSLogo } from "@/components/shell/brand-logo";
 import { useFirebaseAuth } from "@/lib/firebase/auth-context";
 import { Button } from "@/components/ui/button";
+import { InstallAppButton } from "@/components/pwa/install-app";
 
 export function MarketingNav() {
-  const { signInAsGuest } = useFirebaseAuth();
+  const { user } = useFirebaseAuth();
   const router = useRouter();
-  const [demoLoading, setDemoLoading] = useState(false);
+  const start = () => router.push(user ? "/today" : "/login?mode=signup");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -22,19 +23,6 @@ export function MarketingNav() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  async function handleLiveDemo() {
-    if (demoLoading) return;
-    setDemoLoading(true);
-    try {
-      await signInAsGuest("Ayush");
-      router.push("/today");
-    } catch {
-      router.push("/today");
-    } finally {
-      setDemoLoading(false);
-    }
-  }
 
   return (
     <header
@@ -71,36 +59,29 @@ export function MarketingNav() {
 
         {/* Action Buttons */}
         <div className="hidden sm:flex items-center gap-3">
-          <Link href="/login">
-            <Button variant="ghost" size="sm">
-              Sign in
-            </Button>
-          </Link>
+          <InstallAppButton variant="ghost" className="h-9 px-3 text-xs" />
+          {!user && (
+            <Link href="/login">
+              <Button variant="ghost" size="sm">
+                Sign in
+              </Button>
+            </Link>
+          )}
 
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleLiveDemo}
-            disabled={demoLoading}
-          >
-            {demoLoading ? <span>Loading...</span> : <span>Try the demo</span>}
+          <Button variant="primary" size="sm" onClick={start}>
+            <span>{user ? "Open app" : "Get started"}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Button>
         </div>
 
         {/* Mobile Hamburger Button */}
         <div className="flex sm:hidden items-center gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleLiveDemo}
-            disabled={demoLoading}
-          >
-            Demo
+          <Button variant="primary" size="sm" onClick={start}>
+            {user ? "Open app" : "Get started"}
           </Button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-xl text-[#A1A1AA] hover:text-[#F5F5F4] border border-white/10"
+            className="grid size-11 place-items-center rounded-xl text-[#A1A1AA] hover:text-[#F5F5F4] border border-white/10"
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -149,11 +130,14 @@ export function MarketingNav() {
             </a>
           </nav>
           <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-              <Button variant="secondary" className="w-full">
-                Sign in
-              </Button>
-            </Link>
+            <InstallAppButton variant="primary" className="w-full" label="Install the app" />
+            {!user && (
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="secondary" className="w-full">
+                  Sign in
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       )}

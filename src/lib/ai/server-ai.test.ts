@@ -94,13 +94,25 @@ describe("Server-Side AI Infrastructure", () => {
       expect(result.auth?.isVerified).toBe(false);
     });
 
-    it("does not fall back to the header uid when the token is invalid", async () => {
+    it("rejects an invalid token instead of falling back to a header uid", async () => {
       const req = new Request("http://localhost/api/ai/coach", {
         headers: { Authorization: "Bearer forged-token", "x-athlete-uid": "victim-uid-123" },
       });
       const result = await verifyServerAuth(req);
-      expect(result.auth?.uid).toBe("ayush");
-      expect(result.auth?.isVerified).toBe(false);
+      expect(result.auth).toBeNull();
+      expect(result.errorResponse?.status).toBe(401);
+    });
+
+    it("rejects header-only callers in production", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      try {
+        const req = new Request("http://localhost/api/ai/coach", { headers: { "x-demo-user": "true", "x-athlete-uid": "victim" } });
+        const result = await verifyServerAuth(req);
+        expect(result.auth).toBeNull();
+        expect(result.errorResponse?.status).toBe(401);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it("rejects unauthenticated callers in production", async () => {
